@@ -1,17 +1,21 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from sklearn.svm import LinearSVC
+import warnings
 
-# ===============================================================
-# Data generation
-# ===============================================================
+warnings.filterwarnings('ignore')
+
 
 def make_soudry_dataset(n=200, d=5000, margin=0.1, sigma=3.0):
     v = np.ones(d) / np.sqrt(d)
     n2 = n // 2
 
-    X_pos = margin * v + sigma * np.random.randn(n2, d)
-    X_neg = -margin * v + sigma * np.random.randn(n2, d)
+    noise_pos = sigma * np.random.randn(n2, d)
+    noise_neg = sigma * np.random.randn(n2, d)
+
+    X_pos = margin * v + noise_pos
+    X_neg = -margin * v + noise_neg
 
     X = np.vstack([X_pos, X_neg])
     y = np.concatenate([np.ones(n2), -np.ones(n2)])
@@ -20,178 +24,183 @@ def make_soudry_dataset(n=200, d=5000, margin=0.1, sigma=3.0):
     return X[perm], y[perm], v
 
 
-# ===============================================================
-# Logistic utilities
-# ===============================================================
+def get_empirical_max_margin(X, y):
+    print("Computing empirical max-margin solution (SVM)...")
+    clf = LinearSVC(C=1e6, fit_intercept=False, dual="auto", max_iter=20000, tol=1e-6)
+    clf.fit(X, y)
+    w_svm = clf.coef_.flatten()
 
-def logistic_loss(w, X, y):
-    margins = y * (X @ w)
-    return np.mean(np.logaddexp(0, -margins))
+    preds = clf.predict(X)
+    acc = np.mean(preds == y)
+    print(f"SVM Separation Accuracy: {acc * 100:.2f}%")
+    if acc < 1.0:
+        print("WARNING: Data is not linearly separable by SVM (Try increasing d or decreasing sigma)")
 
-def logistic_grad(w, X, y):
-    margins = y * (X @ w)
-    probs = 1.0 / (1.0 + np.exp(margins))
-    return -(y * probs) @ X / len(X)
+    return w_svm / np.linalg.norm(w_svm)
 
-def angle_between(u, v):
+
+def get_angle(u, v):
     dot = np.dot(u, v)
-    denom = np.linalg.norm(u) * np.linalg.norm(v)
+    denom = np.linalg.norm(u) * np.linalg.norm(v) + 1e-12
     val = np.clip(dot / denom, -1.0, 1.0)
     return np.arccos(val)
 
-def direction_distance(u, v):
-    u_hat = u / np.linalg.norm(u)
-    v_hat = v / np.linalg.norm(v)
-    return np.linalg.norm(u_hat - v_hat)
+
+def get_direction_distance(w, w_star):
+    w_norm = w / (np.linalg.norm(w) + 1e-12)
+    w_star_norm = w_star / (np.linalg.norm(w_star) + 1e-12)
+    return np.linalg.norm(w_norm - w_star_norm)
 
 
-# ===============================================================
-# Optimization rules
-# ===============================================================
+def exponential_loss(w, X, y):
+    margins = y * (X @ w)
+    safe_margins = np.clip(margins, -100, 100)
+    return np.mean(np.exp(-safe_margins))
 
-def gd_step(w, grad, lr):
+
+def get_error_rate(w, X, y):
+    preds = np.sign(X @ w)
+    return np.mean(preds != y)
+
+
+def step_gd(w, X, y, lr):
+    margins = y * (X @ w)
+    safe_margins = np.clip(margins, -50, None)
+    coeffs = np.exp(-safe_margins)
+
+    grad = - (X.T @ (y * coeffs)) / len(y)
     return w - lr * grad
 
-def ngd_step(w, grad, lr):
-    gnorm = np.linalg.norm(grad) + 1e-12
-    return w - lr * (grad / gnorm)
 
-def sam_step(w, grad, X, y, lr, rho):
+def step_ngd_stable(w, X, y, lr):
+    margins = y * (X @ w)
+    neg_margins = -margins
+    shift = np.max(neg_margins)
+    exps = np.exp(neg_margins - shift)
+    softmax_weights = exps / np.sum(exps)
+
+    direction = - (X.T @ (y * softmax_weights))
+    return w - lr * direction
+
+
+def step_sam_stable(w, X, y, lr, rho=0.05):
+    margins = y * (X @ w)
+    safe_margins = np.clip(margins, -50, None)
+    coeffs = np.exp(-safe_margins)
+    grad = - (X.T @ (y * coeffs)) / len(y)
     gnorm = np.linalg.norm(grad) + 1e-12
+
     eps = rho * grad / gnorm
-    grad2 = logistic_grad(w + eps, X, y)
-    return w - lr * grad2
+    w_adv = w + eps
 
-def sam_ngd_step(w, grad, X, y, lr, rho):
+    margins_adv = y * (X @ w_adv)
+    safe_margins_adv = np.clip(margins_adv, -50, None)
+    coeffs_adv = np.exp(-safe_margins_adv)
+    grad_adv = - (X.T @ (y * coeffs_adv)) / len(y)
+
+    return w - lr * grad_adv
+
+
+def step_sam_ngd_stable(w, X, y, lr, rho=0.05):
+    margins = y * (X @ w)
+    safe_margins = np.clip(margins, -50, None)
+    coeffs = np.exp(-safe_margins)
+    grad = - (X.T @ (y * coeffs)) / len(y)
     gnorm = np.linalg.norm(grad) + 1e-12
+
     eps = rho * grad / gnorm
-    grad2 = logistic_grad(w + eps, X, y)
-    gnorm2 = np.linalg.norm(grad2) + 1e-12
-    return w - lr * (grad2 / gnorm2)
+    w_adv = w + eps
 
+    return step_ngd_stable(w_adv, X, y, lr)
 
-# ===============================================================
-# Training loop for all optimizers
-# ===============================================================
 
 def main():
-    print("Generating dataset...")
-    X, y, w_star = make_soudry_dataset(
-        n=200,
-        d=5000,
-        margin=0.1,
-        sigma=3.0,
-    )
+    N, D = 200, 5000
+    X, y, v_pop = make_soudry_dataset(n=N, d=D, margin=0.1, sigma=3.0)
 
-    sigma_max = np.linalg.norm(X, ord=2)
-    lr = 1.0 / (sigma_max ** 2)
-    rho = 0.1
-    print("Learning rate:", lr)
+    w_star = get_empirical_max_margin(X, y)
 
-    names = ["GD", "NGD", "SAM", "SAM_NGD"]
+    print(f"Angle(v, w*): {get_angle(v_pop, w_star):.4f} rad")
 
-    steps_dict = {k: [] for k in names}
-    norms = {k: [] for k in names}
-    losses = {k: [] for k in names}
-    angles = {k: [] for k in names}
-    dists = {k: [] for k in names}
+    TOTAL_ITERS = 100_000
+    learning_rates = [1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1]
 
-    ws = {
-        "GD": np.zeros(X.shape[1]),
-        "NGD": np.zeros(X.shape[1]),
-        "SAM": np.zeros(X.shape[1]),
-        "SAM_NGD": np.zeros(X.shape[1]),
+    optimizers = {
+        "GD": step_gd,
+        "SAM": step_sam_stable,
+        "NGD": step_ngd_stable,
+        "SAM_NGD": step_sam_ngd_stable
     }
 
-    total_iters = 300000
-    record_steps = np.unique(np.logspace(0, np.log10(total_iters), 400).astype(int))
-    step_idx = 0
+    results = {}
 
-    print("Training...")
+    print("Starting Training...")
 
-    for t in tqdm(range(1, total_iters + 1)):
+    for lr in learning_rates:
+        results[lr] = {}
+        print(f"\n--- LR = {lr} ---")
 
-        # compute each optimizer's gradient from its own weights
-        grad_GD       = logistic_grad(ws["GD"], X, y)
-        grad_NGD      = logistic_grad(ws["NGD"], X, y)
-        grad_SAM      = logistic_grad(ws["SAM"], X, y)
-        grad_SAM_NGD  = logistic_grad(ws["SAM_NGD"], X, y)
+        for name, step_fn in optimizers.items():
+            w = np.random.randn(D) * 1e-6
 
-        # update all weights with their own rule
-        ws["GD"]       = gd_step(ws["GD"], grad_GD, lr)
-        ws["NGD"]      = ngd_step(ws["NGD"], grad_NGD, lr)
-        ws["SAM"]      = sam_step(ws["SAM"], grad_SAM, X, y, lr, rho)
-        ws["SAM_NGD"]  = sam_ngd_step(ws["SAM_NGD"], grad_SAM_NGD, X, y, lr, rho)
+            history = {"steps": [], "dist": [], "angle": [], "loss": [], "err": []}
+            record_steps = np.unique(np.logspace(0, np.log10(TOTAL_ITERS), 200).astype(int))
+            rec_idx = 0
 
-        if t == record_steps[step_idx]:
-            for name in names:
-                wcur = ws[name]
-                steps_dict[name].append(t)
-                norms[name].append(np.linalg.norm(wcur))
-                losses[name].append(logistic_loss(wcur, X, y))
-                angles[name].append(angle_between(wcur, w_star))
-                dists[name].append(direction_distance(wcur, w_star))
+            for t in tqdm(range(1, TOTAL_ITERS + 1), leave=False, desc=name):
+                try:
+                    w = step_fn(w, X, y, lr)
+                except:
+                    break
 
-            step_idx += 1
-            if step_idx >= len(record_steps):
-                break
+                if rec_idx < len(record_steps) and t == record_steps[rec_idx]:
+                    dist = get_direction_distance(w, w_star)
+                    ang = get_angle(w, w_star)
+                    ls = exponential_loss(w, X, y)
+                    err = get_error_rate(w, X, y)
 
-    # ===========================================================
-    # Plots
-    # ===========================================================
+                    history["steps"].append(t)
+                    history["dist"].append(dist)
+                    history["angle"].append(ang)
+                    history["loss"].append(ls)
+                    history["err"].append(err)
+                    rec_idx += 1
 
-    # Norm plot
-    plt.figure()
-    for name in names:
-        plt.plot(steps_dict[name], norms[name], label=name)
-    plt.xscale("log")
-    plt.title("||w(t)|| growth")
-    plt.xlabel("iteration")
-    plt.ylabel("norm")
-    plt.legend()
-    plt.grid()
-    plt.savefig("norm_compare.png")
+            results[lr][name] = history
 
-    # Loss plot
-    plt.figure()
-    for name in names:
-        plt.plot(steps_dict[name], losses[name], label=name)
-    plt.xscale("log")
-    plt.yscale("log")
-    plt.title("Logistic loss")
-    plt.xlabel("iteration")
-    plt.ylabel("loss")
-    plt.legend()
-    plt.grid()
-    plt.savefig("loss_compare.png")
+    print("\nPlotting All Metrics...")
 
-    # Angle plot
-    plt.figure()
-    for name in names:
-        plt.plot(steps_dict[name], angles[name], label=name)
-    plt.xscale("log")
-    plt.title("Angle between w(t) and w*")
-    plt.xlabel("iteration")
-    plt.ylabel("angle (radians)")
-    plt.legend()
-    plt.grid()
-    plt.savefig("angle_compare.png")
+    metrics_to_plot = [
+        ("dist", "Direction Distance", "_distance_convergence.png"),
+        ("angle", "Angle with w* (radians)", "_angle_convergence.png"),
+        ("loss", "Exponential Loss", "_loss_convergence.png"),
+        ("err", "Classification Error", "_error_convergence.png")
+    ]
 
-    # Distance plot
-    plt.figure()
-    for name in names:
-        plt.plot(steps_dict[name], dists[name], label=name)
-    plt.xscale("log")
-    plt.title("Direction distance")
-    plt.xlabel("iteration")
-    plt.ylabel("||w_hat - w_star_hat||")
-    plt.legend()
-    plt.grid()
-    plt.savefig("distance_compare.png")
+    for key, title, filename in metrics_to_plot:
+        fig, axes = plt.subplots(1, len(learning_rates), figsize=(18, 5))
+        if len(learning_rates) == 1: axes = [axes]
 
-    print("Done. Saved norm_compare.png, loss_compare.png, angle_compare.png, distance_compare.png")
+        fig.suptitle(f"{title} vs Iterations (Log-Log)", fontsize=16)
+
+        for i, lr in enumerate(learning_rates):
+            ax = axes[i]
+            for name in optimizers:
+                hist = results[lr][name]
+                if len(hist["steps"]) > 0:
+                    ax.plot(hist["steps"], hist[key], label=name, linewidth=2)
+
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+            ax.set_title(f"LR = {lr}")
+            ax.set_xlabel("Iterations")
+            ax.grid(True, which="both", alpha=0.3)
+            if i == 0: ax.legend()
+
+        plt.tight_layout()
+        plt.savefig(filename)
+        print(f"Saved {filename}")
 
 
 if __name__ == "__main__":
     main()
-
