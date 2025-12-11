@@ -3,6 +3,42 @@
 This repository provides a complete experimental framework for studying implicit bias and margin dynamics of linear classifiers trained on separable data, following the setup of Soudry et al. (2018).
 It supports both classic first-order optimizers and modern adaptive methods, including SAM variants.
 
+## Setup
+
+### Option 1: Using `uv` (Recommended)
+
+[`uv`](https://github.com/astral-sh/uv) is Python's environment manager that supports official new standards. If you have `uv` installed:
+
+```bash
+# Creates virtual environment, syncs dependencies
+uv sync
+```
+
+If you don't have `uv` installed, you can install it via:
+
+```bash
+# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Or using pip
+pip install uv
+```
+
+### Option 2: Using Traditional `venv`
+
+If you prefer the standard Python virtual environment approach:
+
+```bash
+# Create a virtual environment
+python -m venv .venv
+
+# Activate the virtual environment
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
 ## Running the Core Experiments (GD / NGD / SAM / SAM–NGD)
 
 To run the main Soudry-style experiment:

@@ -1,2 +1,8 @@
+# NixOS, direnv/
+.direnv/
+
+# Python
 __pycache__/
 experiments
+.venv/
+venv/
