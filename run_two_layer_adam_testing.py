@@ -85,7 +85,7 @@ def main():
         results,
         learning_rates,
         list(optimizers.keys()),
-        experiment_name="adam_soudry_twolayer"
+        experiment_name="2layers_adam_family_testing"
     )
 
 if __name__ == "__main__":
