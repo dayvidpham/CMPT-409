@@ -71,8 +71,8 @@ def main():
     }
 
     # Run training
-    #learning_rates = [1e-4, 1e-3, 1e-2, 1e-1, 1e0]
-    learning_rates = [1e-4]
+    learning_rates = [1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1]
+    #learning_rates = [1e-4]
     results = run_training(
         datasets=datasets,
         model_factory=model_factory,

@@ -32,7 +32,7 @@ def main():
     # -------------------------------------------------------------------------
     # Experiment Configuration
     # -------------------------------------------------------------------------
-    num_runs = 5
+    num_runs = 40
     
     # 1. Instantiate the Master Generator from OS entropy
     master_rng = np.random.default_rng()
@@ -48,9 +48,9 @@ def main():
 
     # Dataset params
     N, D = 200, 5000
-    total_iters = 20_000
+    total_iters = 100_000
     
-    learning_rates = [1e-3, 1e-2, 1e-1]
+    learning_rates = [1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1]
     
     optimizer_keys = [
         Optimizer.GD,
