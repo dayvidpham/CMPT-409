@@ -17,7 +17,7 @@ from engine import (
 )
 from engine.optimizers.adaptive import make_adam_step
 from engine.plotting import plot_all
-from engine.optimizers import OptimizerState, make_adaptive_optimizer, Adam
+from engine.optimizers import OptimizerState, make_adaptive_optimizer, make_sam_optimizer, Adam
 
 import torch
 
@@ -49,11 +49,14 @@ def main():
     # Optimizers
     optimizers = {
         Optimizer.Adam: make_adaptive_optimizer(torch.optim.Adam, betas=(0.9, 0.999), eps=1e-8),
+        Optimizer.AdaGrad: make_adaptive_optimizer(torch.optim.Adagrad, eps=1e-8),
+        Optimizer.SAM_Adam: make_sam_optimizer(torch.optim.Adam, rho=0.05, betas=(0.9, 0.999), eps=1e-8),
+        Optimizer.SAM_AdaGrad: make_sam_optimizer(torch.optim.Adagrad, rho=0.05, eps=1e-8),
     }
 
     # Run training
-    #learning_rates = [1e-4, 1e-3, 1e-2, 1e-1, 1e0]
-    learning_rates = [1e-4]
+    learning_rates = [1e-4, 1e-3, 1e-2, 1e-1, 1e0]
+    #learning_rates = [1e-4]
     results = run_training(
         datasets=datasets,
         model_factory=model_factory,

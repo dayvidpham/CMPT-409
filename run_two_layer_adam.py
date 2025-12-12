@@ -1,16 +1,23 @@
 # ===============================================================
 # run_adam_experiments.py   (Adam / Adagrad / SAM-Adam / SAM-Adagrad)
 # ===============================================================
-import numpy as np
+from engine import (
+    run_training,
+    TwoLayerModel,
+    DatasetSplit,
+    Metric,
+    Optimizer,
+    ComputeBackend,
+    MetricsCollector,
+    split_train_test,
+    make_soudry_dataset,
+    exponential_loss,
+    get_error_rate,
+)
+from engine.optimizers import make_adaptive_optimizer, make_sam_optimizer
+from engine.plotting import plot_all
 import torch
-import torch.nn as nn
 
-from linearLayer.dataset import make_soudry_dataset
-from linearLayer.trainer import run_training
-from linearLayer.plotting import plot_all
-from linearLayer.adam_optimizers import *
-
-from sklearn.model_selection import train_test_split
 
 # ===============================================================
 # Main experiment
@@ -24,15 +31,27 @@ def main():
     X, y, v_pop = make_soudry_dataset(N, D)
     print("Dataset ready:", X.shape, y.shape)
 
-    # to torch tensors
-    X_t = torch.tensor(X, dtype=torch.float32)
-    y_t = torch.tensor(y, dtype=torch.float32)
-
+    # Split data
+    datasets = split_train_test(X, y, test_size=0.2, random_state=42)
 
     # ----------------------------------------------------------
     # Width k
     # ----------------------------------------------------------
     k = 50
+
+    # Model factory
+    def model_factory():
+        return TwoLayerModel(D, k, backend=ComputeBackend.Torch, device="cpu")
+
+    # Metrics factory
+    def metrics_factory(model):
+        return MetricsCollector(
+            metric_fns={
+                Metric.Loss: exponential_loss,
+                Metric.Error: get_error_rate,
+            },
+            w_star=None
+        )
 
     # ----------------------------------------------------------
     # Learning rates
@@ -41,27 +60,25 @@ def main():
     total_iters = 10_000
 
     # ----------------------------------------------------------
-    # Optimizer registry
+    # Optimizer registry (FIXED: no LR in names, no duplicate declaration)
     # ----------------------------------------------------------
-    optimizers = {}
-
-    optimizers = {}
-
-    for lr in learning_rates:
-
-        optimizers[f"Adam_lr{lr}"] = make_torch_adam_step((k, D), (10, k), lr)
-        optimizers[f"Adagrad_lr{lr}"] = make_torch_adagrad_step((k, D), (10, k), lr)
-        optimizers[f"SAM_Adam_lr{lr}"] = make_torch_sam_adam_step_2layer((k, D), (10, k), lr)
-        optimizers[f"SAM_Adagrad_lr{lr}"] = make_torch_sam_adagrad_step_2layer((k, D), (10, k), lr)
+    optimizers = {
+        Optimizer.Adam: make_adaptive_optimizer(torch.optim.Adam, betas=(0.9, 0.999), eps=1e-8),
+        Optimizer.AdaGrad: make_adaptive_optimizer(torch.optim.Adagrad, eps=1e-8),
+        Optimizer.SAM_Adam: make_sam_optimizer(torch.optim.Adam, rho=0.05, betas=(0.9, 0.999), eps=1e-8),
+        Optimizer.SAM_AdaGrad: make_sam_optimizer(torch.optim.Adagrad, rho=0.05, eps=1e-8),
+    }
 
     # ----------------------------------------------------------
     # Run training
     # ----------------------------------------------------------
     results = run_training(
-        X_t, y_t,
+        datasets=datasets,
+        model_factory=model_factory,
         optimizers=optimizers,
         learning_rates=learning_rates,
-        k=k,
+        metrics_collector_factory=metrics_factory,
+        train_split=DatasetSplit.Train,
         total_iters=total_iters,
         debug=True
     )
