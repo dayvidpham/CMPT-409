@@ -1,6 +1,8 @@
 import torch
-from .base import OptimizerState, EPS, GRAD_TOL, CLAMP_MIN, CLAMP_MAX
+from .base import OptimizerState, GRAD_TOL
 from ..models.twolayer import TwoLayerModel
+from ..losses import Loss, ExponentialLoss
+from ..constants import CLAMP_MIN, CLAMP_MAX
 
 
 # --- Manual Optimized Factories ---

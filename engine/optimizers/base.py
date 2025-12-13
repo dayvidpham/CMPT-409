@@ -2,15 +2,10 @@ from abc import ABC, abstractmethod
 from typing import Optional, Callable
 from ..types import ArrayLike
 from ..models import Model
+from ..constants import EPS, GRAD_TOL, CLAMP_MIN, CLAMP_MAX
+from ..losses import Loss, ExponentialLoss
 import torch
 import torch.nn as nn
-
-# Global constants
-# Machine epsilon for float64 (Double Precision)
-EPS = 2.2e-16
-GRAD_TOL = 1e-30
-CLAMP_MIN = -300
-CLAMP_MAX = 300
 
 # -----------------------------------------------------------------------------
 # Optimizer Base Classes
@@ -43,9 +38,9 @@ class OptimizerState(ABC):
 class StatelessOptimizer(OptimizerState):
     """Wrapper for stateless optimizers (GD, SAM, NGD)"""
 
-    def __init__(self, step_fn: Callable):
+    def __init__(self, step_fn: Callable, loss: Optional[Loss] = None):
         self.step_fn = step_fn
-        self.loss_fn = ExponentialLoss()  # Create once, reuse across all steps
+        self.loss_fn = loss or ExponentialLoss()  # Create once, reuse across all steps
 
     def step(self, model: Model, X: ArrayLike, y: ArrayLike, lr: float):
         # Pass the reusable loss function to the step function
@@ -61,9 +56,10 @@ class StatefulOptimizer(OptimizerState):
     Automatically handles initialization on the first step.
     """
 
-    def __init__(self, torch_opt_class: type[torch.optim.Optimizer], **kwargs):
+    def __init__(self, torch_opt_class: type[torch.optim.Optimizer], loss: Optional[Loss] = None, **kwargs):
         self.opt_class = torch_opt_class
         self.kwargs = kwargs
+        self.loss_fn = loss or ExponentialLoss()
         self.optimizer: Optional[torch.optim.Optimizer] = None
 
     def step(self, model: Model, X: ArrayLike, y: ArrayLike, lr: float):
@@ -71,7 +67,6 @@ class StatefulOptimizer(OptimizerState):
         if self.optimizer is None:
             # We assume model.parameters() returns torch tensors
             self.optimizer = self.opt_class(model.parameters(), lr=lr, **self.kwargs)  # type: ignore[call-arg]
-            self.loss_fn = ExponentialLoss()
 
         # 2. Update Learning Rate (if changed)
         # for param_group in self.optimizer.param_groups:
@@ -100,18 +95,18 @@ class SAMOptimizer(OptimizerState):
     """
 
     def __init__(
-        self, torch_opt_class: type[torch.optim.Optimizer], rho: float = 0.05, **kwargs
+        self, torch_opt_class: type[torch.optim.Optimizer], rho: float = 0.05, loss: Optional[Loss] = None, **kwargs
     ):
         self.opt_class = torch_opt_class
         self.kwargs = kwargs
         self.rho = rho
+        self.loss_fn = loss or ExponentialLoss()
         self.optimizer: Optional[torch.optim.Optimizer] = None
 
     def step(self, model: Model, X: ArrayLike, y: ArrayLike, lr: float):
         # 1. Lazy Initialization
         if self.optimizer is None:
             self.optimizer = self.opt_class(model.parameters(), lr=lr, **self.kwargs)  # type: ignore[call-arg]
-            self.loss_fn = ExponentialLoss()
 
         # 2. First forward/backward to compute gradient at current point
         self.optimizer.zero_grad()
@@ -158,38 +153,6 @@ class SAMOptimizer(OptimizerState):
         self.optimizer = None
 
 
-class ExponentialLoss(nn.Module):
-    """
-    Computes the mean exponential loss: mean(exp(-y * y_pred))
-    """
-
-    def __init__(self, clamp_min=CLAMP_MIN, clamp_max=CLAMP_MAX):
-        super().__init__()
-        # Clamping is essential because exp() grows excessively fast.
-        # Using the same clamp values as first_order.py and manual.py for consistency
-        self.clamp_min = clamp_min
-        self.clamp_max = clamp_max
-
-    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            input: The raw scores (logits) from the network. Shape (N, 1) or (N,)
-            target: The targets, MUST be {-1, 1}. Shape (N, 1) or (N,)
-        """
-        # Ensure shapes match
-        if input.shape != target.shape:
-            target = target.view_as(input)
-
-        # Compute margins: y * f(x)
-        margins = target * input
-
-        # Numerical stability (prevents Inf/NaN gradients)
-        margins = torch.clamp(margins, min=self.clamp_min, max=self.clamp_max)
-
-        # Loss
-        return torch.mean(torch.exp(-margins))
-
-
 # -----------------------------------------------------------------------------
 # Factory Functions
 # -----------------------------------------------------------------------------
@@ -202,31 +165,34 @@ def make_optimizer(step_fn: Callable) -> OptimizerState:
 
 def make_optimizer_factory(
     step_fn: Callable,
+    loss: Optional[Loss] = None,
     **fixed_kwargs,
 ) -> Callable[..., StatelessOptimizer]:
     """
-    Create optimizer factory with optional fixed hyperparameters.
+    Create optimizer factory with optional fixed hyperparameters and loss.
 
     Args:
         step_fn: The optimizer step function (e.g., step_gd, step_sam_stable)
+        loss: Loss function to use (defaults to ExponentialLoss)
         **fixed_kwargs: Hyperparameters to fix at factory creation time
 
     Returns:
         Factory callable that accepts additional kwargs and returns optimizer.
 
     Example:
-        >>> # Factory with no fixed params (allows rho to be specified)
-        >>> sam_factory = make_optimizer_factory(step_sam_stable)
-        >>> opt = sam_factory(rho=0.1)
+        >>> # Factory with ExponentialLoss
+        >>> gd_factory = make_optimizer_factory(step_gd)
+        >>> opt = gd_factory()
         >>>
-        >>> # Factory with fixed rho
-        >>> sam_01_factory = make_optimizer_factory(step_sam_stable, rho=0.1)
-        >>> opt = sam_01_factory()  # rho already bound
+        >>> # Factory with LogisticLoss
+        >>> from engine.losses import LogisticLoss
+        >>> gd_logistic_factory = make_optimizer_factory(step_gd, loss=LogisticLoss())
+        >>> opt = gd_logistic_factory()
     """
     from functools import partial
 
     def factory(**kwargs) -> StatelessOptimizer:
         merged = {**fixed_kwargs, **kwargs}
-        return StatelessOptimizer(partial(step_fn, **merged))
+        return StatelessOptimizer(partial(step_fn, **merged), loss=loss)
 
     return factory

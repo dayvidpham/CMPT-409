@@ -1,5 +1,6 @@
 import torch
-from .base import EPS, GRAD_TOL, CLAMP_MIN, CLAMP_MAX
+from .base import GRAD_TOL
+from ..losses import Loss
 
 
 # -----------------------------------------------------------------------------
@@ -9,52 +10,11 @@ from .base import EPS, GRAD_TOL, CLAMP_MIN, CLAMP_MAX
 # Everything is PyTorch - no NumPy support
 
 
-def _linear_grad_exponential(X, y, w, clamp_min=CLAMP_MIN, clamp_max=CLAMP_MAX, return_loss=False):
-    """
-    Compute gradient of Exponential Loss optimized for GPU.
-    Uses Matrix-Vector multiplication (addmm) to avoid large intermediate broadcasts.
-
-    Args:
-        return_loss: If True, return (grad, loss). If False, return grad only.
-    """
-    # 1. Compute Scores: (N, D) @ (D,) -> (N,)
-    scores = X @ w
-    y = y.view_as(scores)
-
-    # 2. Compute Scalar Term (the "weight" for each sample)
-    margins = y * scores
-    # In-place clamp is slightly faster if margins is not reused, but safety first
-    margins_clamped = torch.clamp(margins, clamp_min, clamp_max)
-
-    # exp(-m)
-    exp_neg_margins = torch.exp(-margins_clamped)
-
-    # scalar_term: y * exp(-m)
-    # shape (N, 1)
-    scalar_term = (y * exp_neg_margins).view(-1, 1)
-
-    # 3. Compute Gradient via Matrix Multiplication
-    # Original: -mean(scalar_term * X, dim=0) -> Broadcsts to (N, D) (Memory Heavy)
-    # Optimized: -1/N * (X.T @ scalar_term)   -> MatMul (Compute Dense, Tensor Cores)
-    # X.T is (D, N), scalar_term is (N, 1) -> Result (D, 1)
-
-    N = X.shape[0]
-    grad = torch.matmul(X.T, scalar_term)
-    grad.div_(-N)  # In-place division
-
-    if return_loss:
-        # Loss is mean of exp(-margins)
-        loss = exp_neg_margins.mean()
-        return grad.view_as(w), loss
-    else:
-        return grad.view_as(w)
-
-
-def step_gd(model, X, y, lr, loss_fn):
-    """Gradient Descent step."""
+def step_gd(model, X, y, lr, loss_fn: Loss):
+    """Gradient Descent step with configurable loss."""
     if hasattr(model, "w") and len(list(model.parameters())) == 1:
         with torch.no_grad():
-            grad = _linear_grad_exponential(X, y, model.w)
+            grad = loss_fn.grad_linear(X, y, model.w)
             model.w -= lr * grad
     else:
         model.zero_grad()
@@ -67,11 +27,11 @@ def step_gd(model, X, y, lr, loss_fn):
                     param -= lr * param.grad
 
 
-def step_sgd(model, X, y, lr, loss_fn):
+def step_sgd(model, X, y, lr, loss_fn: Loss):
     """Stochastic Gradient Descent step - classic SGD without momentum."""
     if hasattr(model, "w") and len(list(model.parameters())) == 1:
         with torch.no_grad():
-            grad = _linear_grad_exponential(X, y, model.w)
+            grad = loss_fn.grad_linear(X, y, model.w)
             model.w -= lr * grad
     else:
         model.zero_grad()
@@ -89,9 +49,7 @@ def step_ngd_stable(
     X,
     y,
     lr,
-    loss_fn,
-    clamp_min=CLAMP_MIN,
-    clamp_max=CLAMP_MAX,
+    loss_fn: Loss,
     grad_tol=GRAD_TOL,
 ):
     """
@@ -105,7 +63,14 @@ def step_ngd_stable(
     if hasattr(model, "w") and len(list(model.parameters())) == 1:
         with torch.no_grad():
             # Compute gradient and loss together for efficiency
-            grad, loss = _linear_grad_exponential(X, y, model.w, clamp_min, clamp_max, return_loss=True)
+            if hasattr(loss_fn, 'grad_linear_with_loss'):
+                grad, loss = loss_fn.grad_linear_with_loss(X, y, model.w)
+            else:
+                # Fallback for Loss implementations without grad_linear_with_loss
+                grad = loss_fn.grad_linear(X, y, model.w)
+                scores = X @ model.w
+                loss = loss_fn(scores, y)
+
             grad_norm = grad.norm()
 
             if grad_norm > grad_tol:
@@ -132,30 +97,26 @@ def step_sam_stable(
     X,
     y,
     lr,
-    loss_fn,
+    loss_fn: Loss,
     rho=0.05,
-    clamp_min=CLAMP_MIN,
-    clamp_max=CLAMP_MAX,
     grad_tol=GRAD_TOL,
 ):
-    """Sharpness-Aware Minimization (SAM) - Corrected."""
+    """Sharpness-Aware Minimization (SAM) with configurable loss."""
     if hasattr(model, "w") and len(list(model.parameters())) == 1:
         with torch.no_grad():
             # 1. Compute Gradient
-            grad = _linear_grad_exponential(X, y, model.w, clamp_min, clamp_max)
+            grad = loss_fn.grad_linear(X, y, model.w)
             grad_norm = grad.norm()
 
             # 2. Compute Perturbation (Strictly enforcing norm = rho)
-            if (
-                grad_norm > grad_tol
-            ):  # Use a tiny threshold significantly smaller than EPS
+            if grad_norm > grad_tol:
                 eps = (rho / grad_norm) * grad
             else:
                 eps = torch.zeros_like(grad)  # Or random direction if preferred
 
             # 3. Adversarial Step
             w_adv = model.w + eps
-            grad_adv = _linear_grad_exponential(X, y, w_adv, clamp_min, clamp_max)
+            grad_adv = loss_fn.grad_linear(X, y, w_adv)
 
             # 4. Update
             model.w -= lr * grad_adv
@@ -215,10 +176,8 @@ def step_sam_ngd_stable(
     X,
     y,
     lr,
-    loss_fn,
+    loss_fn: Loss,
     rho=0.05,
-    clamp_min=CLAMP_MIN,
-    clamp_max=CLAMP_MAX,
     grad_tol=GRAD_TOL,
 ):
     """
@@ -230,7 +189,7 @@ def step_sam_ngd_stable(
     if hasattr(model, "w") and len(list(model.parameters())) == 1:
         with torch.no_grad():
             # 1. SAM perturbation (uses gradient norm)
-            grad = _linear_grad_exponential(X, y, model.w, clamp_min, clamp_max)
+            grad = loss_fn.grad_linear(X, y, model.w)
             grad_norm = grad.norm()
 
             if grad_norm > grad_tol:
@@ -239,7 +198,13 @@ def step_sam_ngd_stable(
                 w_adv = model.w + eps
 
                 # 2. Loss-normalized GD update at adversarial point
-                grad_adv, loss_adv = _linear_grad_exponential(X, y, w_adv, clamp_min, clamp_max, return_loss=True)
+                if hasattr(loss_fn, 'grad_linear_with_loss'):
+                    grad_adv, loss_adv = loss_fn.grad_linear_with_loss(X, y, w_adv)
+                else:
+                    grad_adv = loss_fn.grad_linear(X, y, w_adv)
+                    scores_adv = X @ w_adv
+                    loss_adv = loss_fn(scores_adv, y)
+
                 grad_adv_norm = grad_adv.norm()
 
                 if grad_adv_norm > grad_tol:

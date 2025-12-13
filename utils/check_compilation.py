@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 """
-Check Python syntax compilation for all engine modules.
-Catches syntax errors before runtime.
+Check Python syntax compilation and imports for all engine modules.
+Catches syntax errors and import errors before runtime.
 """
 
 import sys
 from pathlib import Path
 import py_compile
+import importlib.util
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -14,12 +15,26 @@ sys.path.insert(0, str(project_root))
 
 
 def check_file(filepath):
-    """Check if a Python file compiles without syntax errors."""
+    """Check if a Python file compiles and imports without errors."""
+    # First check syntax
     try:
         py_compile.compile(filepath, doraise=True)
-        return True, None
     except py_compile.PyCompileError as e:
-        return False, str(e)
+        return False, f"Syntax Error: {str(e)}"
+
+    # Then try to import it
+    try:
+        relative_path = filepath.relative_to(project_root)
+        module_name = ".".join(relative_path.with_suffix("").parts)
+
+        spec = importlib.util.spec_from_file_location(module_name, filepath)
+        if spec and spec.loader:
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
+            spec.loader.exec_module(module)
+        return True, None
+    except Exception as e:
+        return False, f"Import Error: {str(e)}"
 
 
 def main():
