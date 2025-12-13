@@ -6,21 +6,39 @@ import torch
 # Everything is Torch now
 ArrayLike = torch.Tensor
 
+# Import strategy components
+from .strategies import PlotStrategy, LogLogStrategy, PercentageStrategy
+
 class DatasetSplit(Enum):
     Train = auto()
     Val = auto()
     Test = auto()
 
 class Metric(Enum):
-    Loss = auto()
-    Error = auto()
-    Angle = auto()
-    Distance = auto()
+    """
+    Metric definitions composed with their plotting strategies.
+    Format: Name = (unique_slug, strategy_instance)
+    """
+    Loss = ("loss", LogLogStrategy())
+    Error = ("error", PercentageStrategy())
+    Angle = ("angle", LogLogStrategy())
+    Distance = ("dist", LogLogStrategy())
+
+    def __new__(cls, value: str, strategy: PlotStrategy):
+        obj = object.__new__(cls)
+        obj._value_ = value
+        obj._strategy = strategy
+        return obj
 
     @property
     def requires_reference(self) -> bool:
-        """Metrics like Angle/Distance need w_star"""
+        """Metrics like Angle/Distance need w_star."""
         return self in (Metric.Angle, Metric.Distance)
+
+    @property
+    def strategy(self) -> PlotStrategy:
+        """Accessor for the default plotting strategy."""
+        return self._strategy
 
 class Optimizer(Enum):
     GD = auto()

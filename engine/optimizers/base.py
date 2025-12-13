@@ -67,7 +67,7 @@ class StatefulOptimizer(OptimizerState):
         # 1. Lazy Initialization: Create optimizer on first call
         if self.optimizer is None:
             # We assume model.parameters() returns torch tensors
-            self.optimizer = self.opt_class(model.parameters(), **self.kwargs)
+            self.optimizer = self.opt_class(model.parameters(), lr=lr, **self.kwargs)
             self.loss_fn = ExponentialLoss()
 
         # 2. Update Learning Rate (if changed)
@@ -103,7 +103,7 @@ class SAMOptimizer(OptimizerState):
     def step(self, model: Model, X: ArrayLike, y: ArrayLike, lr: float):
         # 1. Lazy Initialization
         if self.optimizer is None:
-            self.optimizer = self.opt_class(model.parameters(), **self.kwargs)
+            self.optimizer = self.opt_class(model.parameters(), lr=lr, **self.kwargs)
             self.loss_fn = ExponentialLoss()
 
         # 2. First forward/backward to compute gradient at current point
@@ -176,11 +176,3 @@ class ExponentialLoss(nn.Module):
 def make_optimizer(step_fn: Callable) -> OptimizerState:
     """Create optimizer from stateless step function"""
     return StatelessOptimizer(step_fn)
-
-def make_adaptive_optimizer(factory_fn: Callable, **kwargs) -> OptimizerState:
-    """Create optimizer from factory function (Adam, Adagrad)"""
-    return StatefulOptimizer(factory_fn, **kwargs)
-
-def make_sam_optimizer(torch_opt_class: type[torch.optim.Optimizer], rho: float = 0.05, **kwargs) -> OptimizerState:
-    """Create SAM optimizer wrapping a PyTorch optimizer"""
-    return SAMOptimizer(torch_opt_class, rho=rho, **kwargs)

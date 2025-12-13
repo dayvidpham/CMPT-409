@@ -6,13 +6,9 @@ from .first_order import (
 )
 from .adaptive import (
     Adam,
-    Adagrad,
+    AdaGrad,
     SAM_Adam,
-    SAM_Adagrad,
-    make_adam_step,
-    make_adagrad_step,
-    make_sam_adam_step,
-    make_sam_adagrad_step,
+    SAM_AdaGrad,
 )
 
 from .manual import (
@@ -26,27 +22,22 @@ from .manual import (
     ManualSAM_NGD
 )
 
-from .base import make_optimizer, make_adaptive_optimizer, make_sam_optimizer, OptimizerState, StatelessOptimizer, StatefulOptimizer
+from .base import make_optimizer, OptimizerState, StatelessOptimizer, StatefulOptimizer, SAMOptimizer
 
 __all__ = [
     'step_gd',
     'step_ngd_stable',
     'step_sam_stable',
     'step_sam_ngd_stable',
-    'make_adam_step',
-    'make_adagrad_step',
-    'make_sam_adam_step',
-    'make_sam_adagrad_step',
     'make_optimizer',
-    'make_adaptive_optimizer',
-    'make_sam_optimizer',
     'OptimizerState',
     'StatelessOptimizer',
     'StatefulOptimizer',
+    'SAMOptimizer',
     'Adam',
-    'Adagrad',
+    'AdaGrad',
     'SAM_Adam',
-    'SAM_Adagrad',
+    'SAM_AdaGrad',
     'ManualAdam',
     'ManualAdaGrad',
     'ManualSAM_Adam',

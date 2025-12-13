@@ -13,7 +13,7 @@ from engine import (
     get_angle,
     get_direction_distance,
 )
-from engine.optimizers import make_adaptive_optimizer, make_sam_optimizer
+from engine.optimizers import Adam, AdaGrad, SAM_Adam, SAM_AdaGrad
 from engine.plotting import plot_all
 import numpy as np
 import random
@@ -61,9 +61,9 @@ def main():
     # Optimizers (FIXED: no LR in names, moved outside loop)
     optimizers = {
         Optimizer.Adam: make_adaptive_optimizer(torch.optim.Adam, betas=(0.9, 0.999), eps=1e-8),
-        Optimizer.AdaGrad: make_adaptive_optimizer(torch.optim.Adagrad, eps=1e-8),
+        Optimizer.AdaGrad: make_adaptive_optimizer(torch.optim.AdaGrad, eps=1e-8),
         Optimizer.SAM_Adam: make_sam_optimizer(torch.optim.Adam, rho=0.05, betas=(0.9, 0.999), eps=1e-8),
-        Optimizer.SAM_AdaGrad: make_sam_optimizer(torch.optim.Adagrad, rho=0.05, eps=1e-8),
+        Optimizer.SAM_AdaGrad: make_sam_optimizer(torch.optim.AdaGrad, rho=0.05, eps=1e-8),
     }
 
     # Run training (FIXED: moved outside loop)

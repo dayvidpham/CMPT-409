@@ -1,5 +1,5 @@
 # ===============================================================
-# run_adam_experiments.py   (Adam / Adagrad / SAM-Adam / SAM-Adagrad)
+# run_adam_experiments.py   (Adam / AdaGrad / SAM-Adam / SAM-AdaGrad)
 # ===============================================================
 from engine import (
     run_training,
