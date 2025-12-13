@@ -82,10 +82,12 @@ class PlotContext:
     ax: Any  # matplotlib.axes.Axes
     x: np.ndarray
     y: np.ndarray
-    label: str
-    color: ColorType = None
-    linestyle: str = "-"
-    alpha: float = 1.0
+    label: str = ""
+    plot_kwargs: dict = None  # Additional kwargs for ax.plot()
+
+    def __post_init__(self):
+        if self.plot_kwargs is None:
+            self.plot_kwargs = {}
 
 
 class PlotStrategy:
@@ -100,6 +102,7 @@ class PlotStrategy:
         x_scale: AxisScale = AxisScale.Log,
         y_scale: AxisScale = AxisScale.Linear,
         y_label_suffix: str = "",
+        display_name_suffix: str = "",
         y_lim: Optional[tuple[float, float]] = None,
         **style_kwargs,
     ):
@@ -107,6 +110,7 @@ class PlotStrategy:
         self.x_scale = x_scale
         self.y_scale = y_scale
         self.y_label_suffix = y_label_suffix
+        self.display_name_suffix = display_name_suffix or y_label_suffix
         self.y_lim = y_lim
         self.style_kwargs = style_kwargs
 
@@ -125,7 +129,7 @@ class PlotStrategy:
         """Apply axis configuration (scales, limits, labels)."""
         ax.set_xscale(self.x_scale.value)
         ax.set_yscale(self.y_scale.value)
-        ax.set_ylabel(f"{base_label}{self.y_label_suffix}")
+        ax.set_ylabel(f"{base_label}{self.display_name_suffix}")
 
         if self.y_lim:
             ax.set_ylim(*self.y_lim)
@@ -139,13 +143,8 @@ class PlotStrategy:
 
     def plot(self, ctx: PlotContext) -> None:
         """Render the plot on the provided axes."""
-        style = {**self.style_kwargs}
-        if ctx.color:
-            style["color"] = ctx.color
-        if ctx.linestyle:
-            style["linestyle"] = ctx.linestyle
-        style["alpha"] = ctx.alpha
-        style["label"] = ctx.label
+        # Merge strategy defaults, context kwargs, and label
+        style = {**self.style_kwargs, **ctx.plot_kwargs, "label": ctx.label}
 
         y_transformed = self.process_values(ctx.y)
         ctx.ax.plot(ctx.x, y_transformed, **style)
@@ -175,5 +174,6 @@ def PercentageStrategy(**kwargs) -> PlotStrategy:
         x_scale=AxisScale.Log,
         y_scale=AxisScale.Linear,
         y_label_suffix=" (%)",
+        display_name_suffix=" Rate (%)",
         **kwargs,
     )

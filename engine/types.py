@@ -45,6 +45,11 @@ class Metric(Enum):
         """Accessor for the default plotting strategy."""
         return self._strategy
 
+    @property
+    def display_name(self) -> str:
+        """Formatted name for display in titles, using strategy's suffix."""
+        return f"{self.name}{self.strategy.display_name_suffix}"
+
 
 class Optimizer(Enum):
     GD = auto()
@@ -83,6 +88,14 @@ class OptimizerConfig:
             return self.optimizer.name
         params = ",".join(f"{hp.value}={v}" for hp, v in self.hyperparams)
         return f"{self.optimizer.name}({params})"
+
+    @property
+    def dir_name(self) -> str:
+        """Directory-safe name (e.g., 'SAM--lr=0.01_rho=0.1')."""
+        if not self.hyperparams:
+            return self.optimizer.name
+        params = "_".join(f"{hp.value}={v}" for hp, v in self.hyperparams)
+        return f"{self.optimizer.name}--{params}"
 
     @property
     def learning_rate(self) -> float:

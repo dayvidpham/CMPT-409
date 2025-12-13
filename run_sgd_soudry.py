@@ -41,9 +41,9 @@ def main():
     print(f"Using device: {device}")
 
     # === Dataset ===
-    X, y, v_pop = make_soudry_dataset(n=500, d=5000, margin=1.0, device=device)
+    X, y, v_pop = make_soudry_dataset(n=200, d=5000, device=device)
     w_star = get_empirical_max_margin(X, y)
-    datasets = split_train_test(X, y, test_size=100, random_state=42)
+    datasets = split_train_test(X, y, test_size=40)
 
     # === Model factory ===
     input_dim = X.shape[1]
@@ -103,7 +103,7 @@ def main():
         metrics_collector_factory=metrics_factory,
         train_split=DatasetSplit.Train,
         num_epochs=10000,
-        batch_size=128,
+        batch_size=32,
         drop_last=True,
         debug=True,
     )
