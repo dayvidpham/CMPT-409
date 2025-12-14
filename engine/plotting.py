@@ -486,19 +486,15 @@ def plot_combined(
 
             # Get assigned color for this config
             base_color = config_colors[config]
-            r, g, b = base_color[:3]
-            h, s, v = colorsys.rgb_to_hsv(r, g, b)
 
             if show_split_styles:
-                # Plot train and test with different lightness
+                # Plot train and test with solid/dashed line differentiation
                 train_keys = [k for k in metric_keys if k.split == DatasetSplit.Train]
                 test_keys = [k for k in metric_keys if k.split == DatasetSplit.Test]
 
-                # Plot train split (lighter)
+                # Plot train split (dashed, lower opacity, thinner)
                 for key in train_keys:
                     values = np.array(history_cpu.get(key))
-                    train_v = min(v * 1.3, 1.0)
-                    train_color = colorsys.hsv_to_rgb(h, s, train_v)
 
                     ctx = PlotContext(
                         ax=ax,
@@ -506,18 +502,17 @@ def plot_combined(
                         y=values,
                         label=f"{config.name} (train)",
                         plot_kwargs={
-                            "color": train_color,
-                            "alpha": 0.7,
-                            "linestyle": "-",
+                            "color": base_color,
+                            "alpha": 0.5,
+                            "linestyle": "--",
+                            "linewidth": 1.5,
                         },
                     )
                     strategy.plot(ctx)
 
-                # Plot test split (darker)
+                # Plot test split (solid, full opacity, thicker)
                 for key in test_keys:
                     values = np.array(history_cpu.get(key))
-                    test_v = v * 0.7
-                    test_color = colorsys.hsv_to_rgb(h, s, test_v)
 
                     ctx = PlotContext(
                         ax=ax,
@@ -525,9 +520,10 @@ def plot_combined(
                         y=values,
                         label=f"{config.name} (test)",
                         plot_kwargs={
-                            "color": test_color,
-                            "alpha": 0.7,
+                            "color": base_color,
+                            "alpha": 1.0,
                             "linestyle": "-",
+                            "linewidth": 2.0,
                         },
                     )
                     strategy.plot(ctx)
@@ -558,11 +554,31 @@ def plot_combined(
 
     # Create single legend at the top (after suptitle)
     handles, labels = axes[0].get_legend_handles_labels()
+
+    # Add split style indicators if needed
+    from matplotlib.lines import Line2D
+    if show_split_styles:
+        # Remove duplicates from automatic legend
+        by_label = dict(zip(labels, handles))
+
+        # Add manual legend entries for split styles
+        style_handles = [
+            Line2D([0], [0], color='black', linestyle='-', linewidth=2, label='Test (Solid)'),
+            Line2D([0], [0], color='black', linestyle='--', linewidth=2, alpha=0.5, label='Train (Dashed)'),
+            Line2D([0], [0], color='none', label=' ')  # Spacer
+        ]
+
+        final_handles = style_handles + list(by_label.values())
+        final_labels = [h.get_label() for h in style_handles] + list(by_label.keys())
+    else:
+        final_handles = handles
+        final_labels = labels
+
     fig.legend(
-        handles,
-        labels,
+        final_handles,
+        final_labels,
         loc="outside upper center",
-        ncol=min(len(labels), 4),
+        ncol=min(len(final_labels), 4),
         fontsize=8,
         frameon=True,
     )
@@ -593,6 +609,13 @@ def plot_separate(
         plt.close()
         return
 
+    # Check if we have train/test splits
+    has_splits = any(key.split is not None for key in metric_keys)
+    is_loss_or_error = any(
+        key.metric in (Metric.Loss, Metric.Error) for key in metric_keys
+    )
+    show_split_styles = has_splits and is_loss_or_error
+
     for h in histories:
         h_cpu = h.copy_cpu()
         steps = np.array(h_cpu.get_steps())
@@ -600,13 +623,52 @@ def plot_separate(
         for key in metric_keys:
             values = np.array(h_cpu.get(key))
             label = key.split.name if key.split else key.metric.name
+
+            # Apply split-specific styling
+            if show_split_styles and key.split == DatasetSplit.Train:
+                # Train: dashed, lower opacity, thinner
+                plot_kwargs = {
+                    "alpha": 0.5,
+                    "linestyle": "--",
+                    "linewidth": 1.5,
+                }
+            elif show_split_styles and key.split == DatasetSplit.Test:
+                # Test: solid, full opacity, thicker
+                plot_kwargs = {
+                    "alpha": 1.0,
+                    "linestyle": "-",
+                    "linewidth": 2.0,
+                }
+            else:
+                # No split differentiation
+                plot_kwargs = {"alpha": 0.7}
+
             ctx = PlotContext(
-                ax=ax, x=steps, y=values, label=label, plot_kwargs={"alpha": 0.7}
+                ax=ax, x=steps, y=values, label=label, plot_kwargs=plot_kwargs
             )
             strategy.plot(ctx)
 
     ax.set_xlabel("Steps")
-    ax.legend()
+
+    # Create legend with split styles if needed
+    from matplotlib.lines import Line2D
+    if show_split_styles:
+        handles, labels = ax.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+
+        # Add manual legend entries for split styles
+        style_handles = [
+            Line2D([0], [0], color='black', linestyle='-', linewidth=2, label='Test (Solid)'),
+            Line2D([0], [0], color='black', linestyle='--', linewidth=2, alpha=0.5, label='Train (Dashed)'),
+            Line2D([0], [0], color='none', label=' ')  # Spacer
+        ]
+
+        final_handles = style_handles + list(by_label.values())
+        final_labels = [h.get_label() for h in style_handles] + list(by_label.keys())
+
+        ax.legend(final_handles, final_labels)
+    else:
+        ax.legend()
 
     # Add figure title
     strategy.apply_suptitle(
@@ -870,7 +932,7 @@ def plot_stability_analysis(
 
     fig, axes = plt.subplots(
         nrows, ncols,
-        figsize=(4 * ncols, 5 * nrows),
+        figsize=(5 * ncols, 5 * nrows),  # Wider subplots for better readability
         sharex=True,
         constrained_layout=True,
         squeeze=False
@@ -926,6 +988,10 @@ def plot_stability_analysis(
                 assert all(k.split is None for k in m_keys), \
                     f"Stability metric {metric.name} should not have dataset splits"
 
+                # Configure axis with metric's strategy
+                strategy = metric.strategy
+                strategy.configure_axis(ax, base_label=metric.name)
+
                 # Plot data
                 for config in configs:
                     history = _get_history(results[config])
@@ -934,7 +1000,6 @@ def plot_stability_analysis(
 
                     histories = _get_histories(results[config])
                     color = get_color(config.learning_rate, config.get(Hyperparam.Rho, 0.0))
-                    strategy = metric.strategy
 
                     for h in histories:
                         h_cpu = h.copy_cpu()
@@ -957,13 +1022,21 @@ def plot_stability_analysis(
                                 )
                                 strategy.plot(ctx)
 
-                # Y Labels: Only on left column (group 0 - base optimizer)
-                if group_idx == 0:
+                # Add subplot title: {Optimizer}: {Metric}
+                ax.set_title(f"{opt.name}: {metric.display_name}", fontsize=11, pad=10)
+
+                # Y-axis labels
+                col = col_offset + m_idx
+                if col == 0:
+                    # Leftmost column: show optimizer name
                     ax.set_ylabel(f"{base_opt.name}", fontsize=10)
+                else:
+                    # Inner columns: show metric name
+                    ax.set_ylabel(f"{metric.display_name}", fontsize=9)
 
     # Set X labels for bottom row
     for ax in axes[-1, :]:
-        ax.set_xlabel("Steps")
+        ax.set_xlabel("Steps", fontsize=10)
 
     # --- Legend (Outside Upper Center) ---
     legend_elements = []
@@ -1126,7 +1199,7 @@ def plot_sam_comparison(
 
                 # Plot all keys from the task
                 if show_split_styles:
-                    # Plot with respect to split styles (lighter for train, darker for test)
+                    # Plot with solid/dashed differentiation for train/test
                     for key in metric_keys:
                         all_values = []
                         steps = None
@@ -1145,7 +1218,23 @@ def plot_sam_comparison(
                             mean_vals = np.mean(truncated, axis=0)
                             mean_steps = steps[:min_len]
 
-                            # Plot with solid line
+                            # Apply split-specific styling
+                            if key.split == DatasetSplit.Train:
+                                # Train: dashed, lower opacity, thinner
+                                linestyle = "--"
+                                alpha = 0.5
+                                lw = 1.5
+                            elif key.split == DatasetSplit.Test:
+                                # Test: solid, full opacity, thicker
+                                linestyle = "-"
+                                alpha = 1.0
+                                lw = 2.0
+                            else:
+                                # Fallback
+                                linestyle = "-"
+                                alpha = line_alpha
+                                lw = linewidth
+
                             ctx = PlotContext(
                                 ax=ax,
                                 x=mean_steps,
@@ -1153,9 +1242,9 @@ def plot_sam_comparison(
                                 label="",
                                 plot_kwargs={
                                     "color": color,
-                                    "linewidth": linewidth,
-                                    "alpha": line_alpha,
-                                    "linestyle": "-",
+                                    "linewidth": lw,
+                                    "alpha": alpha,
+                                    "linestyle": linestyle,
                                 },
                             )
                             strategy.plot(ctx)
@@ -1207,7 +1296,18 @@ def plot_sam_comparison(
         axes[row_idx, 0].tick_params(axis="y", which="both", labelleft=True)
 
     # Add legend showing learning rate colors and rho lightness
+    from matplotlib.lines import Line2D
     legend_elements = []
+
+    # Add split style indicators if needed
+    if show_split_styles:
+        legend_elements.append(
+            Line2D([0], [0], color='black', linestyle='-', linewidth=2, label='Test (Solid)')
+        )
+        legend_elements.append(
+            Line2D([0], [0], color='black', linestyle='--', linewidth=2, alpha=0.5, label='Train (Dashed)')
+        )
+        legend_elements.append(Patch(facecolor="none", edgecolor="none", label=""))
 
     # Add learning rate color indicators (hue)
     if all_lrs:
