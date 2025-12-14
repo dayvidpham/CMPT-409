@@ -238,8 +238,13 @@ class MetricsCollector:
             elif metric.requires_split:
                 # Dataset metrics (Loss, Error): compute on each split
                 for split, (X, y) in datasets.items():
-                    # Check if we can reuse train loss from optimizer
-                    if metric == Metric.Loss and split == DatasetSplit.Train and self.train_loss is not None:
+                    # For training loss, require optimizer to provide it
+                    if metric == Metric.Loss and split == DatasetSplit.Train:
+                        if self.train_loss is None:
+                            raise ValueError(
+                                "Training loss must be set by the optimizer. "
+                                "Ensure the optimizer has a reference to this MetricsCollector and sets train_loss during step()."
+                            )
                         value = self.train_loss
                         # Reset for next iteration
                         self.train_loss = None
@@ -268,27 +273,34 @@ class MetricsCollector:
                         )
                     # Use the gradient norm provided by the optimizer (unscaled by learning rate)
                     value = self.grad_norm
-                    # Reset for next iteration
-                    self.grad_norm = None
-                elif metric == Metric.WeightLossRatio:
-                    w_norm = get_weight_norm(model)
-                    # Reuse loss from results if already computed
+                elif metric == Metric.GradLossRatio:
+                    # Compute ratio: grad_norm / loss
+                    # Both should have been set by the optimizer
+                    if self.grad_norm is None:
+                        raise ValueError(
+                            "GradLossRatio requires grad_norm to be set by the optimizer. "
+                            "Ensure the optimizer has a reference to this MetricsCollector and sets grad_norm during step()."
+                        )
+                    # Reuse loss from results (should have been computed in first pass)
                     loss_key = MetricKey(metric=Metric.Loss, split=DatasetSplit.Train)
-                    if loss_key in results:
-                        loss_val = results[loss_key]
-                    else:
-                        # Compute loss if not available
-                        X, y = datasets[DatasetSplit.Train]
-                        with torch.no_grad():
-                            scores = model.forward(X)
-                        loss_val = metric_fn(scores, y)
-                    # Compute ratio: w_norm / loss (tensor operation)
-                    value = w_norm / loss_val
+                    if loss_key not in results:
+                        raise ValueError(
+                            "GradLossRatio requires training loss to be computed first. "
+                            "Ensure Loss metric is in the metrics list before GradLossRatio."
+                        )
+                    loss_val = results[loss_key]
+                    # Compute ratio: grad_norm / loss (tensor operation)
+                    value = self.grad_norm / loss_val
                 else:
                     continue
 
                 key = MetricKey(metric=metric, split=None)
                 results[key] = value.detach()
+
+        # Reset grad_norm and train_loss after all metrics computed
+        # (They will be set again by optimizer on next step)
+        self.grad_norm = None
+        self.train_loss = None
 
         return results
 

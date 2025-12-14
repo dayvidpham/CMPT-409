@@ -22,7 +22,6 @@ from .metrics import (
     get_empirical_max_margin,
     get_angle,
     get_direction_distance,
-    exponential_loss,
     get_error_rate,
 )
 
@@ -61,7 +60,6 @@ __all__ = [
     "get_empirical_max_margin",
     "get_angle",
     "get_direction_distance",
-    "exponential_loss",
     "get_error_rate",
     # Loss functions
     "Loss",

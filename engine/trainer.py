@@ -179,6 +179,9 @@ def _run_fullbatch_training(
         collector = metrics_collector_factory(model)
         generic_optim = optimizer_factory()
 
+        # Link optimizer to metrics collector
+        generic_optim.metrics_collector = collector
+
         # Pre-allocate history buffer
         metric_keys = collector.get_metric_keys(list(datasets.keys()))
         history = TrainingHistory(
@@ -270,6 +273,9 @@ def _run_minibatch_training(
         model = model_factory()
         generic_optim = optimizer_factory()
         collector = metrics_collector_factory(model)
+
+        # Link optimizer to metrics collector
+        generic_optim.metrics_collector = collector
 
         # Pre-allocate history
         metric_keys = collector.get_metric_keys(list(datasets.keys()))

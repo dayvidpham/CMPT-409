@@ -30,7 +30,7 @@ class Metric(Enum):
     Angle = ("angle", LogLogStrategy())
     Distance = ("dist", LogLogStrategy())
     WeightNorm = ("weight_norm", LogLogStrategy())
-    WeightLossRatio = ("grad_loss_ratio", LogLogStrategy())
+    GradLossRatio = ("grad_loss_ratio", LogLogStrategy())
     UpdateNorm = ("update_norm", LogLogStrategy(
         x_filter=lambda x: x >= 2,
     ))
@@ -56,7 +56,7 @@ class Metric(Enum):
         return self in (
             Metric.WeightNorm,
             Metric.UpdateNorm,
-            Metric.WeightLossRatio,
+            Metric.GradLossRatio,
         )
 
     @property

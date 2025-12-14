@@ -14,7 +14,6 @@ from engine import (
     split_train_test,
     make_soudry_dataset,
     get_empirical_max_margin,
-    exponential_loss,
     get_error_rate,
     get_angle,
     get_direction_distance,
@@ -70,8 +69,8 @@ def main():
                 Metric.Angle: get_angle,
                 Metric.Distance: get_direction_distance,
                 Metric.WeightNorm: get_weight_norm,
-                Metric.UpdateNorm: compute_update_norm,
-                Metric.WeightLossRatio: loss_fn,  # Reuse loss_fn for ratio computation
+                Metric.UpdateNorm: compute_update_norm,  # Function not used, optimizer provides grad_norm
+                Metric.GradLossRatio: loss_fn,  # Function not used, computed from grad_norm/loss
             },
             w_star=w_star,
         )

@@ -26,6 +26,18 @@ class OptimizerState(ABC):
         from ..metrics import MetricsCollector
         self.metrics_collector: Optional[MetricsCollector] = metrics_collector
 
+    def collect_metrics(self, grad_norm: torch.Tensor, train_loss: torch.Tensor):
+        """
+        Store gradient norm and training loss in the metrics collector.
+
+        Args:
+            grad_norm: Norm of the gradient (unscaled by learning rate)
+            train_loss: Training loss value
+        """
+        if self.metrics_collector is not None:
+            self.metrics_collector.grad_norm = grad_norm
+            self.metrics_collector.train_loss = train_loss
+
     @abstractmethod
     def step(self, model: Model, X: ArrayLike, y: ArrayLike, lr: float):
         """

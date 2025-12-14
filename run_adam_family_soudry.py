@@ -68,7 +68,7 @@ def main():
                 Metric.Distance: get_direction_distance,
                 Metric.WeightNorm: get_weight_norm,
                 Metric.UpdateNorm: compute_update_norm,
-                Metric.WeightLossRatio: loss_fn,  # Reuse loss_fn for ratio computation
+                Metric.GradLossRatio: loss_fn,  # Function not used, computed from grad_norm/loss
             },
             w_star=w_star
         )

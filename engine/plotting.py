@@ -857,7 +857,7 @@ def plot_stability_analysis(
 
     # Extract stability metrics from task
     metric_keys = task.keys
-    stability_metrics = [Metric.WeightNorm, Metric.UpdateNorm, Metric.WeightLossRatioaaaa]
+    stability_metrics = [Metric.WeightNorm, Metric.UpdateNorm, Metric.GradLossRatio]
     metrics = [k.metric for k in metric_keys if k.metric in stability_metrics]
 
     if not metrics:

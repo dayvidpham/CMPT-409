@@ -4,28 +4,42 @@ from ..losses import Loss
 
 
 # -----------------------------------------------------------------------------
+# Helper function for metrics collection
+# -----------------------------------------------------------------------------
+
+
+def _collect_metrics(metrics_collector, grad_norm, train_loss):
+    """Helper to collect metrics in stateless optimizer functions."""
+    if metrics_collector is not None:
+        metrics_collector.grad_norm = grad_norm
+        metrics_collector.train_loss = train_loss
+
+
+# -----------------------------------------------------------------------------
 # First-Order Optimizers (GD, NGD, SAM, SAM+NGD)
 # -----------------------------------------------------------------------------
 # All optimizers accept a Model and loss_fn, and perform backpropagation
 # Everything is PyTorch - no NumPy support
 
 
-def step_gd(model, X, y, lr, loss_fn: Loss):
+def step_gd(model, X, y, lr, loss_fn: Loss, metrics_collector=None):
     """Gradient Descent step with configurable loss."""
     if hasattr(model, "w") and len(list(model.parameters())) == 1:
         with torch.no_grad():
-            grad = loss_fn.grad_linear(X, y, model.w)
+            grad, loss = loss_fn.grad_linear_with_loss(X, y, model.w)
+            _collect_metrics(metrics_collector, grad.norm(), loss)
             model.w -= lr * grad
     else:
         raise NotImplementedError("Use ManualGD instead")
 
 
 
-def step_sgd(model, X, y, lr, loss_fn: Loss):
+def step_sgd(model, X, y, lr, loss_fn: Loss, metrics_collector=None):
     """Stochastic Gradient Descent step - classic SGD without momentum."""
     if hasattr(model, "w") and len(list(model.parameters())) == 1:
         with torch.no_grad():
-            grad = loss_fn.grad_linear(X, y, model.w)
+            grad, loss = loss_fn.grad_linear_with_loss(X, y, model.w)
+            _collect_metrics(metrics_collector, grad.norm(), loss)
             model.w -= lr * grad
     else:
         raise NotImplementedError("Use ManualSGD instead")
@@ -36,6 +50,7 @@ def step_loss_ngd(
     y,
     lr,
     loss_fn: Loss,
+    metrics_collector=None,
     grad_tol=GRAD_TOL,
 ):
     """
@@ -51,6 +66,7 @@ def step_loss_ngd(
             # Compute gradient and loss together for efficiency
             grad, loss = loss_fn.grad_linear_with_loss(X, y, model.w)
             grad_norm = grad.norm()
+            _collect_metrics(metrics_collector, grad_norm, loss)
 
             if grad_norm > grad_tol:
                 model.w -= lr * (grad / loss)
@@ -65,6 +81,7 @@ def step_vec_ngd(
     y,
     lr,
     loss_fn: Loss,
+    metrics_collector=None,
     grad_tol=GRAD_TOL,
 ):
     """
@@ -76,8 +93,10 @@ def step_vec_ngd(
     """
     if hasattr(model, "w") and len(list(model.parameters())) == 1:
         with torch.no_grad():
-            grad = loss_fn.grad_linear(X, y, model.w)
+            grad, loss = loss_fn.grad_linear_with_loss(X, y, model.w)
             grad_norm = grad.norm()
+            _collect_metrics(metrics_collector, grad_norm, loss)
+
             if grad_norm > grad_tol:
                 model.w -= lr * (grad / grad_norm)
 
@@ -88,6 +107,7 @@ def step_sam_stable(
     y,
     lr,
     loss_fn: Loss,
+    metrics_collector=None,
     rho=0.05,
     grad_tol=GRAD_TOL,
 ):
@@ -95,8 +115,9 @@ def step_sam_stable(
     if hasattr(model, "w") and len(list(model.parameters())) == 1:
         with torch.no_grad():
             # 1. Compute Gradient
-            grad = loss_fn.grad_linear(X, y, model.w)
+            grad, loss = loss_fn.grad_linear_with_loss(X, y, model.w)
             grad_norm = grad.norm()
+            _collect_metrics(metrics_collector, grad_norm, loss)
 
             # 2. Compute Perturbation (Strictly enforcing norm = rho)
             if grad_norm > grad_tol:
@@ -120,6 +141,7 @@ def step_sam_loss_ngd(
     y,
     lr,
     loss_fn: Loss,
+    metrics_collector=None,
     rho=0.05,
     grad_tol=GRAD_TOL,
 ):
@@ -132,8 +154,9 @@ def step_sam_loss_ngd(
     if hasattr(model, "w") and len(list(model.parameters())) == 1:
         with torch.no_grad():
             # 1. SAM perturbation (uses gradient norm)
-            grad = loss_fn.grad_linear(X, y, model.w)
+            grad, loss = loss_fn.grad_linear_with_loss(X, y, model.w)
             grad_norm = grad.norm()
+            _collect_metrics(metrics_collector, grad_norm, loss)
 
             if grad_norm > grad_tol:
                 # Strictly enforce radius = rho
@@ -166,6 +189,7 @@ def step_sam_vec_ngd(
     y,
     lr,
     loss_fn: Loss,
+    metrics_collector=None,
     rho=0.05,
     grad_tol=GRAD_TOL,
 ):
@@ -178,8 +202,9 @@ def step_sam_vec_ngd(
     if hasattr(model, "w") and len(list(model.parameters())) == 1:
         with torch.no_grad():
             # 1. SAM perturbation (uses gradient norm)
-            grad = loss_fn.grad_linear(X, y, model.w)
+            grad, loss = loss_fn.grad_linear_with_loss(X, y, model.w)
             grad_norm = grad.norm()
+            _collect_metrics(metrics_collector, grad_norm, loss)
 
             if grad_norm > grad_tol:
                 # Strictly enforce radius = rho
