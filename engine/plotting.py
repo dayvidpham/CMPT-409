@@ -226,7 +226,7 @@ def plot_all(
         plot_stability_analysis(
             results,
             stability_task,
-            base_dir / "sam_comparison" / "stability_analysis.png"
+            base_dir / "stability_analysis" / "stability_analysis.png"
         )
 
 
@@ -1055,13 +1055,12 @@ def plot_stability_analysis(
                                 values_arr = np.array(values)
                                 ax.plot(steps_arr, values_arr, color=color, alpha=0.8)
 
-                # Titles (Top Row) & Y Labels (Left Col of Group)
-                if row_idx == 0:
-                    prefix = "Base" if group_idx == 0 else "SAM"
-                    ax.set_title(f"{prefix}: {metric.name}", fontsize=11)
+                # Titles: Show optimizer and metric
+                ax.set_title(f"{opt.name}: {metric.name}", fontsize=11)
 
-                if m_idx == 0:
-                    ax.set_ylabel(f"{opt.name}", fontsize=10)
+                # Y Labels: Only on left column (group 0 - base optimizer)
+                if group_idx == 0:
+                    ax.set_ylabel(f"{base_opt.name}", fontsize=10)
 
     # Set X labels for bottom row
     for ax in axes[-1, :]:
