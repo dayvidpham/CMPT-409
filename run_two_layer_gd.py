@@ -16,7 +16,7 @@ from engine import (
     get_error_rate,
     expand_sweep_grid,
 )
-from engine.optimizers.manual import ManualGD, ManualNGD, ManualSAM, ManualSAM_NGD
+from engine.optimizers.manual import ManualGD, ManualLossNGD, ManualVecNGD, ManualSAM, ManualSAM_LossNGD, ManualSAM_VecNGD
 from engine.plotting import plot_all
 import torch
 import os
@@ -63,9 +63,11 @@ def main():
     # ----------------------------------------------------------
     optimizer_factories = {
         Optimizer.GD: ManualGD,
-        Optimizer.NGD: ManualNGD,
+        Optimizer.LossNGD: ManualLossNGD,
+        Optimizer.VecNGD: ManualVecNGD,
         Optimizer.SAM: ManualSAM,
-        Optimizer.SAM_NGD: ManualSAM_NGD,
+        Optimizer.SAM_LossNGD: ManualSAM_LossNGD,
+        Optimizer.SAM_VecNGD: ManualSAM_VecNGD,
     }
 
     # ----------------------------------------------------------
@@ -79,14 +81,21 @@ def main():
         Optimizer.GD: {
             Hyperparam.LearningRate: learning_rates,
         },
-        Optimizer.NGD: {
+        Optimizer.LossNGD: {
+            Hyperparam.LearningRate: learning_rates,
+        },
+        Optimizer.VecNGD: {
             Hyperparam.LearningRate: learning_rates,
         },
         Optimizer.SAM: {
             Hyperparam.LearningRate: learning_rates,
             Hyperparam.Rho: rho_values,
         },
-        Optimizer.SAM_NGD: {
+        Optimizer.SAM_LossNGD: {
+            Hyperparam.LearningRate: learning_rates,
+            Hyperparam.Rho: rho_values,
+        },
+        Optimizer.SAM_VecNGD: {
             Hyperparam.LearningRate: learning_rates,
             Hyperparam.Rho: rho_values,
         },

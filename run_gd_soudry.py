@@ -125,7 +125,7 @@ def main():
         optimizers=optimizer_configs,
         metrics_collector_factory=metrics_factory,
         train_split=DatasetSplit.Train,
-        total_iters=100_000,
+        total_iters=10,
         debug=True,
     )
 

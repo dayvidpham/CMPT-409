@@ -23,10 +23,15 @@ from .manual import (
     ManualSAM_Adam,
     ManualSAM_AdaGrad,
     ManualGD,
-    ManualNGD,
+    ManualLossNGD,
+    ManualVecNGD,
     ManualSAM,
-    ManualSAM_NGD,
+    ManualSAM_LossNGD,
+    ManualSAM_VecNGD,
 )
+# Backward compatibility
+ManualNGD = ManualLossNGD
+ManualSAM_NGD = ManualSAM_LossNGD
 
 from .base import (
     make_optimizer,
@@ -62,7 +67,11 @@ __all__ = [
     "ManualSAM_Adam",
     "ManualSAM_AdaGrad",
     "ManualGD",
-    "ManualNGD",
+    "ManualLossNGD",
+    "ManualVecNGD",
+    "ManualNGD",  # Backward compatibility
     "ManualSAM",
-    "ManualSAM_NGD",
+    "ManualSAM_LossNGD",
+    "ManualSAM_VecNGD",
+    "ManualSAM_NGD",  # Backward compatibility
 ]

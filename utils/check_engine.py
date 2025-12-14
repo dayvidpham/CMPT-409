@@ -306,9 +306,11 @@ def test_twolayer_model_optimizers():
     from engine import TwoLayerModel, OptimizerConfig
     from engine.optimizers import (
         ManualGD,
-        ManualNGD,
+        ManualLossNGD,
+        ManualVecNGD,
         ManualSAM,
-        ManualSAM_NGD,
+        ManualSAM_LossNGD,
+        ManualSAM_VecNGD,
         ManualAdam,
         ManualAdaGrad,
         ManualSAM_Adam,
@@ -339,9 +341,11 @@ def test_twolayer_model_optimizers():
     # Manual optimizers for two-layer model (they handle lr in step())
     manual_optimizers = [
         (Optimizer.GD, ManualGD, {}),
-        (Optimizer.NGD, ManualNGD, {}),
+        (Optimizer.LossNGD, ManualLossNGD, {}),
+        (Optimizer.VecNGD, ManualVecNGD, {}),
         (Optimizer.SAM, ManualSAM, {"rho": 0.05}),
-        (Optimizer.SAM_NGD, ManualSAM_NGD, {"rho": 0.05}),
+        (Optimizer.SAM_LossNGD, ManualSAM_LossNGD, {"rho": 0.05}),
+        (Optimizer.SAM_VecNGD, ManualSAM_VecNGD, {"rho": 0.05}),
         (Optimizer.Adam, ManualAdam, {}),
         (Optimizer.AdaGrad, ManualAdaGrad, {}),
         (Optimizer.SAM_Adam, ManualSAM_Adam, {"rho": 0.05}),

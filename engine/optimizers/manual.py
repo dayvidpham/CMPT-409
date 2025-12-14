@@ -28,16 +28,29 @@ def ManualGD(lr: float = 1e-1, loss: Loss | None = None):
     return ManualTwolayerGD(lr=lr, loss=loss)
 
 
-def ManualNGD(lr: float = 1e-1, loss: Loss | None = None):
-    return ManualTwolayerNGD(lr=lr, loss=loss)
+def ManualLossNGD(lr: float = 1e-1, loss: Loss | None = None):
+    return ManualTwolayerLossNGD(lr=lr, loss=loss)
+
+
+def ManualVecNGD(lr: float = 1e-1, loss: Loss | None = None):
+    return ManualTwolayerVecNGD(lr=lr, loss=loss)
 
 
 def ManualSAM(lr: float = 1e-1, rho=0.05, loss: Loss | None = None):
     return ManualTwolayerSAM(lr=lr, rho=rho, loss=loss)
 
 
-def ManualSAM_NGD(lr: float = 1e-1, rho=0.05, loss: Loss | None = None):
-    return ManualTwolayerSAM_NGD(lr=lr, rho=rho, loss=loss)
+def ManualSAM_LossNGD(lr: float = 1e-1, rho=0.05, loss: Loss | None = None):
+    return ManualTwolayerSAM_LossNGD(lr=lr, rho=rho, loss=loss)
+
+
+def ManualSAM_VecNGD(lr: float = 1e-1, rho=0.05, loss: Loss | None = None):
+    return ManualTwolayerSAM_VecNGD(lr=lr, rho=rho, loss=loss)
+
+
+# Backward compatibility
+ManualNGD = ManualLossNGD
+ManualSAM_NGD = ManualSAM_LossNGD
 
 
 # -----------------------------------------------------------------------------
@@ -354,7 +367,7 @@ class ManualTwolayerGD(OptimizerState):
             W2.add_(g2, alpha=-lr)
 
 
-class ManualTwolayerNGD(OptimizerState):
+class ManualTwolayerLossNGD(OptimizerState):
     """Loss-Normalized Gradient Descent for Linear TwoLayerModel (per Nacson et al. Eq 11).
 
     Update: W = W - lr * (grad / loss)
@@ -389,6 +402,42 @@ class ManualTwolayerNGD(OptimizerState):
             if gnorm > GRAD_TOL:
                 # Normalize by loss instead of gradient norm
                 scale = -lr / loss
+                W1.add_(g1, alpha=scale)  # type: ignore[arg-type]
+                W2.add_(g2, alpha=scale)  # type: ignore[arg-type]
+            # else: gradient is zero, no update
+
+
+class ManualTwolayerVecNGD(OptimizerState):
+    """Vector-Normalized Gradient Descent for Linear TwoLayerModel.
+
+    Update: W = W - lr * (grad / ||grad||)
+
+    Note: This optimizer is specialized for exponential loss.
+    The loss parameter is accepted for API consistency but not used.
+    """
+
+    def __init__(self, lr: float = 1e-1, loss: Loss | None = None):
+        self.default_lr = lr
+        self.loss = loss  # For API consistency, not currently used
+        self.state = None
+
+    def reset(self):
+        self.state = None
+
+    def step(self, model: TwoLayerModel, X, y, lr: float):
+        W1, W2 = model.W1, model.W2
+
+        with torch.no_grad():
+            # 1. Compute Gradients
+            g1, g2 = _compute_grads(W1, W2, X, y, return_loss=False)
+
+            # 2. Compute Global Norm
+            gnorm = torch.sqrt(g1.norm() ** 2 + g2.norm() ** 2)  # type: ignore[arg-type]
+
+            # 3. Vector-Normalized GD Update
+            if gnorm > GRAD_TOL:
+                # Normalize by gradient norm
+                scale = -lr / gnorm
                 W1.add_(g1, alpha=scale)  # type: ignore[arg-type]
                 W2.add_(g2, alpha=scale)  # type: ignore[arg-type]
             # else: gradient is zero, no update
@@ -435,7 +484,7 @@ class ManualTwolayerSAM(OptimizerState):
                 W2.add_(g2_adv, alpha=-lr)
 
 
-class ManualTwolayerSAM_NGD(OptimizerState):
+class ManualTwolayerSAM_LossNGD(OptimizerState):
     """SAM + Loss-Normalized GD for Linear TwoLayerModel (per Nacson et al. Eq 11).
 
     Performs SAM perturbation, then applies loss-normalized gradient descent
@@ -480,5 +529,54 @@ class ManualTwolayerSAM_NGD(OptimizerState):
                 if gnorm_adv > GRAD_TOL:
                     # Normalize by loss instead of gradient norm
                     update_scale = -lr / loss_adv
+                    W1.add_(g1_adv, alpha=update_scale)  # type: ignore[arg-type]
+                    W2.add_(g2_adv, alpha=update_scale)  # type: ignore[arg-type]
+
+
+class ManualTwolayerSAM_VecNGD(OptimizerState):
+    """SAM + Vector-Normalized GD for Linear TwoLayerModel.
+
+    Performs SAM perturbation, then applies vector-normalized gradient descent
+    at the adversarial point: W = W - lr * (grad_adv / ||grad_adv||)
+
+    Note: This optimizer is specialized for exponential loss.
+    The loss parameter is accepted for API consistency but not used.
+    """
+
+    def __init__(self, lr: float = 1e-1, rho=0.05, loss: Loss | None = None):
+        self.default_lr = lr
+        self.rho = rho
+        self.loss = loss  # For API consistency, not currently used
+        self.state = None
+
+    def reset(self):
+        self.state = None
+
+    def step(self, model: TwoLayerModel, X, y, lr: float):
+        W1, W2 = model.W1, model.W2
+
+        with torch.no_grad():
+            # 1. Compute Gradients at current W
+            g1, g2 = _compute_grads(W1, W2, X, y)
+
+            # 2. SAM Perturbation (Global Norm)
+            gnorm = torch.sqrt(g1.norm() ** 2 + g2.norm() ** 2)  # type: ignore[arg-type]
+
+            if gnorm > GRAD_TOL:
+                scale = self.rho / gnorm
+
+                # Perturb weights
+                W1_adv = W1 + g1 * scale
+                W2_adv = W2 + g2 * scale
+
+                # 3. Compute Gradients at perturbed W_adv
+                g1_adv, g2_adv = _compute_grads(W1_adv, W2_adv, X, y, return_loss=False)
+
+                # 4. Vector-Normalized GD Update
+                gnorm_adv = torch.sqrt(g1_adv.norm() ** 2 + g2_adv.norm() ** 2)  # type: ignore[arg-type]
+
+                if gnorm_adv > GRAD_TOL:
+                    # Normalize by gradient norm instead of loss
+                    update_scale = -lr / gnorm_adv
                     W1.add_(g1_adv, alpha=update_scale)  # type: ignore[arg-type]
                     W2.add_(g2_adv, alpha=update_scale)  # type: ignore[arg-type]
