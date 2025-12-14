@@ -151,6 +151,57 @@ def step_sam_loss_ngd(
     Performs SAM perturbation, then applies loss-normalized gradient descent
     at the adversarial point: w = w - lr * (grad_adv / loss_adv)
     """
+    return _step_sam_loss_ngd_impl(
+        model,
+        X,
+        y,
+        lr,
+        loss_fn,
+        metrics_collector=metrics_collector,
+        rho=rho,
+        grad_tol=grad_tol,
+        perturb_sign=1.0,
+    )
+
+
+def step_sam_messy_loss_ngd(
+    model,
+    X,
+    y,
+    lr,
+    loss_fn: Loss,
+    metrics_collector=None,
+    rho=0.05,
+    grad_tol=GRAD_TOL,
+):
+    """
+    Variant of SAM + Loss-Normalized GD that perturbs in the negative direction
+    (w_adv = w - eps) to intentionally destabilize the adversarial point.
+    """
+    return _step_sam_loss_ngd_impl(
+        model,
+        X,
+        y,
+        lr,
+        loss_fn,
+        metrics_collector=metrics_collector,
+        rho=rho,
+        grad_tol=grad_tol,
+        perturb_sign=-1.0,
+    )
+
+
+def _step_sam_loss_ngd_impl(
+    model,
+    X,
+    y,
+    lr,
+    loss_fn: Loss,
+    metrics_collector=None,
+    rho=0.05,
+    grad_tol=GRAD_TOL,
+    perturb_sign: float = 1.0,
+):
     if hasattr(model, "w") and len(list(model.parameters())) == 1:
         with torch.no_grad():
             # 1. SAM perturbation (uses gradient norm)
@@ -161,24 +212,45 @@ def step_sam_loss_ngd(
             if grad_norm > grad_tol:
                 # Strictly enforce radius = rho
                 eps = (rho / grad_norm) * grad
-                w_adv = model.w + eps
 
-                # 2. Loss-normalized GD update at adversarial point
-                if hasattr(loss_fn, 'grad_linear_with_loss'):
-                    grad_adv, loss_adv = loss_fn.grad_linear_with_loss(X, y, w_adv)
+                if perturb_sign >= 0:
+                    w_adv = model.w + eps
+
+                    # 2. Loss-normalized GD update at adversarial point
+                    if hasattr(loss_fn, 'grad_linear_with_loss'):
+                        grad_adv, loss_adv = loss_fn.grad_linear_with_loss(X, y, w_adv)
+                    else:
+                        grad_adv = loss_fn.grad_linear(X, y, w_adv)
+                        scores_adv = X @ w_adv
+                        loss_adv = loss_fn(scores_adv, y)
+
+                    grad_adv_norm = grad_adv.norm()
+
+                    if grad_adv_norm > grad_tol:
+                        # Loss-normalized update
+                        model.w -= lr * (grad_adv / loss_adv)
                 else:
-                    grad_adv = loss_fn.grad_linear(X, y, w_adv)
-                    scores_adv = X @ w_adv
-                    loss_adv = loss_fn(scores_adv, y)
+                    # Messy variant: gradient sampled at w + eps, denominator from ||grad(w - eps)||.
+                    w_pos = model.w + eps
+                    w_neg = model.w - eps
 
-                grad_adv_norm = grad_adv.norm()
+                    if hasattr(loss_fn, 'grad_linear_with_loss'):
+                        grad_pos, _ = loss_fn.grad_linear_with_loss(X, y, w_pos)
+                        grad_neg, loss_neg = loss_fn.grad_linear_with_loss(X, y, w_neg)
+                    else:
+                        grad_pos = loss_fn.grad_linear(X, y, w_pos)
+                        grad_neg = loss_fn.grad_linear(X, y, w_neg)
+                        scores_neg = X @ w_neg
+                        loss_neg = loss_fn(scores_neg, y)
 
-                if grad_adv_norm > grad_tol:
-                    # Loss-normalized update
-                    model.w -= lr * (grad_adv / loss_adv)
-            else:
-                # No update, treat as zero
-                pass
+                    grad_neg_norm = grad_neg.norm()
+
+                    # Previous behavior for messy SAM Loss-NGD:
+                    # if grad_neg_norm > grad_tol:
+                    #     model.w -= lr * (grad_neg / loss_neg)
+
+                    if grad_neg_norm > grad_tol:
+                        model.w -= lr * (grad_pos / grad_neg_norm)
     else:
         raise NotImplementedError("Use ManualSAM_NGD instead")
 
@@ -199,6 +271,57 @@ def step_sam_vec_ngd(
     Performs SAM perturbation, then applies vector-normalized gradient descent
     at the adversarial point: w = w - lr * (grad_adv / ||grad_adv||)
     """
+    return _step_sam_vec_ngd_impl(
+        model,
+        X,
+        y,
+        lr,
+        loss_fn,
+        metrics_collector=metrics_collector,
+        rho=rho,
+        grad_tol=grad_tol,
+        perturb_sign=1.0,
+    )
+
+
+def step_sam_messy_vec_ngd(
+    model,
+    X,
+    y,
+    lr,
+    loss_fn: Loss,
+    metrics_collector=None,
+    rho=0.05,
+    grad_tol=GRAD_TOL,
+):
+    """
+    Variant of SAM + Vector-Normalized GD that flips the adversarial sign
+    (w_adv = w - eps) for debugging/ablation experiments.
+    """
+    return _step_sam_vec_ngd_impl(
+        model,
+        X,
+        y,
+        lr,
+        loss_fn,
+        metrics_collector=metrics_collector,
+        rho=rho,
+        grad_tol=grad_tol,
+        perturb_sign=-1.0,
+    )
+
+
+def _step_sam_vec_ngd_impl(
+    model,
+    X,
+    y,
+    lr,
+    loss_fn: Loss,
+    metrics_collector=None,
+    rho=0.05,
+    grad_tol=GRAD_TOL,
+    perturb_sign: float = 1.0,
+):
     if hasattr(model, "w") and len(list(model.parameters())) == 1:
         with torch.no_grad():
             # 1. SAM perturbation (uses gradient norm)
@@ -209,14 +332,30 @@ def step_sam_vec_ngd(
             if grad_norm > grad_tol:
                 # Strictly enforce radius = rho
                 eps = (rho / grad_norm) * grad
-                w_adv = model.w + eps
 
-                # 2. Vector-normalized GD update at adversarial point
-                grad_adv = loss_fn.grad_linear(X, y, w_adv)
-                grad_adv_norm = grad_adv.norm()
+                if perturb_sign >= 0:
+                    w_adv = model.w + eps
 
-                if grad_adv_norm > grad_tol:
-                    # Vector-normalized update
-                    model.w -= lr * (grad_adv / grad_adv_norm)
+                    # 2. Vector-normalized GD update at adversarial point
+                    grad_adv = loss_fn.grad_linear(X, y, w_adv)
+                    grad_adv_norm = grad_adv.norm()
+
+                    if grad_adv_norm > grad_tol:
+                        # Vector-normalized update
+                        model.w -= lr * (grad_adv / grad_adv_norm)
+                else:
+                    # Messy variant: use gradient from w + eps, scale by ||grad(w - eps)||.
+                    w_pos = model.w + eps
+                    w_neg = model.w - eps
+                    grad_pos = loss_fn.grad_linear(X, y, w_pos)
+                    grad_neg = loss_fn.grad_linear(X, y, w_neg)
+                    grad_neg_norm = grad_neg.norm()
+
+                    # Previous behavior for messy SAM Vec-NGD:
+                    # if grad_neg_norm > grad_tol:
+                    #     model.w -= lr * (grad_neg / grad_neg_norm)
+
+                    if grad_neg_norm > grad_tol:
+                        model.w -= lr * (grad_pos / grad_neg_norm)
     else:
         raise NotImplementedError("Use ManualSAM_VecNGD instead")

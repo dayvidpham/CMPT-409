@@ -30,6 +30,7 @@ class Metric(Enum):
     Angle = ("angle", LogLogStrategy())
     Distance = ("dist", LogLogStrategy())
     WeightNorm = ("weight_norm", LogLogStrategy())
+    GradNorm = ("grad_norm", LogLogStrategy())
     GradLossRatio = ("grad_loss_ratio", LogLogStrategy())
     UpdateNorm = ("update_norm", LogLogStrategy(
         x_filter=lambda x: x >= 2,
@@ -55,6 +56,7 @@ class Metric(Enum):
         """
         return self in (
             Metric.WeightNorm,
+            Metric.GradNorm,
             Metric.UpdateNorm,
             Metric.GradLossRatio,
         )
@@ -86,6 +88,8 @@ class Optimizer(Enum):
     VecNGD = auto()
     SAM_LossNGD = auto()
     SAM_VecNGD = auto()
+    SAM_Messy_LossNGD = auto()
+    SAM_Messy_VecNGD = auto()
     Adam = auto()
     AdaGrad = auto()
     SAM_Adam = auto()

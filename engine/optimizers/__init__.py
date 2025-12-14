@@ -5,7 +5,9 @@ from .first_order import (
     step_vec_ngd,
     step_sam_stable,
     step_sam_loss_ngd,
+    step_sam_messy_loss_ngd,
     step_sam_vec_ngd,
+    step_sam_messy_vec_ngd,
 )
 # Backward compatibility aliases
 step_ngd_stable = step_loss_ngd
@@ -49,7 +51,9 @@ __all__ = [
     "step_vec_ngd",
     "step_sam_stable",
     "step_sam_loss_ngd",
+    "step_sam_messy_loss_ngd",
     "step_sam_vec_ngd",
+    "step_sam_messy_vec_ngd",
     "step_ngd_stable",  # Backward compatibility
     "step_sam_ngd_stable",  # Backward compatibility
     "make_optimizer",

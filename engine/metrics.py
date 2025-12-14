@@ -175,6 +175,17 @@ def compute_update_norm(w_current: torch.Tensor, w_prev: Optional[torch.Tensor])
         return (w_current - w_prev).norm()
 
 
+def get_grad_norm(grad_norm: Optional[torch.Tensor]) -> torch.Tensor:
+    """Return the current gradient norm provided by the optimizer."""
+    if grad_norm is None:
+        raise ValueError(
+            "Gradient norm metric requires grad_norm to be set by the optimizer. "
+            "Ensure the optimizer links to this MetricsCollector and updates grad_norm during step()."
+        )
+    # grad_norm is already detached from graph; clone to avoid accidental mutation.
+    return grad_norm.detach()
+
+
 # -----------------------------------------------------------------------------
 # MetricsCollector
 # -----------------------------------------------------------------------------
@@ -264,15 +275,17 @@ class MetricsCollector:
                 # Stability metrics: computed once per iteration, no dataset splits
                 # Keep as tensors to avoid CPU synchronization
                 if metric == Metric.WeightNorm:
-                    value = get_weight_norm(model)
+                    value = metric_fn(model)
+                elif metric == Metric.GradNorm:
+                    value = metric_fn(self.grad_norm)
                 elif metric == Metric.UpdateNorm:
-                    if self.grad_norm is None:
-                        raise ValueError(
-                            "UpdateNorm metric requires grad_norm to be set by the optimizer. "
-                            "Ensure the optimizer has a reference to this MetricsCollector and sets grad_norm during step()."
-                        )
-                    # Use the gradient norm provided by the optimizer (unscaled by learning rate)
-                    value = self.grad_norm
+                    # Update norm is computed using current vs previous effective weights
+                    if w_eff is None:
+                        w_eff = model.effective_weight
+                    w_curr = w_eff.detach().clone()
+                    value = metric_fn(w_curr, self.w_prev)
+                    # Track current weights for next compute
+                    self.w_prev = w_curr
                 elif metric == Metric.GradLossRatio:
                     # Compute ratio: grad_norm / loss
                     # Both should have been set by the optimizer

@@ -27,7 +27,9 @@ from engine.optimizers import (
     step_loss_ngd,
     step_vec_ngd,
     step_sam_loss_ngd,
+    step_sam_messy_loss_ngd,
     step_sam_vec_ngd,
+    step_sam_messy_vec_ngd,
     make_optimizer_factory,
 )
 from engine.plotting import plot_all
@@ -83,7 +85,9 @@ def main():
         Optimizer.VecNGD: make_optimizer_factory(step_vec_ngd, loss=loss_fn),
         Optimizer.SAM: make_optimizer_factory(step_sam_stable, loss=loss_fn),
         Optimizer.SAM_LossNGD: make_optimizer_factory(step_sam_loss_ngd, loss=loss_fn),
+        Optimizer.SAM_Messy_LossNGD: make_optimizer_factory(step_sam_messy_loss_ngd, loss=loss_fn),
         Optimizer.SAM_VecNGD: make_optimizer_factory(step_sam_vec_ngd, loss=loss_fn),
+        Optimizer.SAM_Messy_VecNGD: make_optimizer_factory(step_sam_messy_vec_ngd, loss=loss_fn),
     }
 
     # === Hyperparameter sweeps ===
@@ -108,7 +112,15 @@ def main():
             Hyperparam.LearningRate: learning_rates,
             Hyperparam.Rho: rho_values,
         },
+        Optimizer.SAM_Messy_LossNGD: {
+            Hyperparam.LearningRate: learning_rates,
+            Hyperparam.Rho: rho_values,
+        },
         Optimizer.SAM_VecNGD: {
+            Hyperparam.LearningRate: learning_rates,
+            Hyperparam.Rho: rho_values,
+        },
+        Optimizer.SAM_Messy_VecNGD: {
             Hyperparam.LearningRate: learning_rates,
             Hyperparam.Rho: rho_values,
         },

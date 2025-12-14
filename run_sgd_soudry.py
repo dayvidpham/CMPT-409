@@ -27,10 +27,12 @@ from engine.optimizers import (
     step_vec_ngd,
     step_sam_stable,
     step_sam_loss_ngd,
+    step_sam_messy_loss_ngd,
     step_sam_vec_ngd,
+    step_sam_messy_vec_ngd,
     make_optimizer_factory,
 )
-from engine.metrics import get_weight_norm, compute_update_norm
+from engine.metrics import get_weight_norm, compute_update_norm, get_grad_norm
 from engine.plotting import plot_all
 
 cpu_count = os.cpu_count()
@@ -68,7 +70,8 @@ def main():
                 Metric.Angle: get_angle,
                 Metric.Distance: get_direction_distance,
                 Metric.WeightNorm: get_weight_norm,
-                Metric.UpdateNorm: compute_update_norm,  # Function not used, optimizer provides grad_norm
+                Metric.GradNorm: get_grad_norm,
+                Metric.UpdateNorm: compute_update_norm,
                 Metric.GradLossRatio: loss_fn,  # Function not used, computed from grad_norm/loss
             },
             w_star=w_star,
@@ -82,12 +85,17 @@ def main():
         Optimizer.VecNGD: make_optimizer_factory(step_vec_ngd, loss=loss_fn),
         Optimizer.SAM: make_optimizer_factory(step_sam_stable, loss=loss_fn),
         Optimizer.SAM_LossNGD: make_optimizer_factory(step_sam_loss_ngd, loss=loss_fn),
+        Optimizer.SAM_Messy_LossNGD: make_optimizer_factory(step_sam_messy_loss_ngd, loss=loss_fn),
         Optimizer.SAM_VecNGD: make_optimizer_factory(step_sam_vec_ngd, loss=loss_fn),
+        Optimizer.SAM_Messy_VecNGD: make_optimizer_factory(step_sam_messy_vec_ngd, loss=loss_fn),
     }
 
     # === Hyperparameter sweeps ===
-    learning_rates = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0]
-    rho_values = [0.05, 0.1, 0.5, 1.0, 5.0, 15.0, 50.0]
+    # learning_rates = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0, 5.0, 10.0]
+    # rho_values = [0.05, 0.1, 0.5, 1.0, 5.0, 15.0, 50.0, 75.0, 100.0]
+
+    learning_rates = [1.0, 5.0, 10.0]
+    rho_values = [0.05, 0.1, 0.5, 1.0, 5.0, 15.0, 50.0, 75.0, 100.0]
 
     sweeps = {
         Optimizer.GD: {
@@ -107,7 +115,15 @@ def main():
             Hyperparam.LearningRate: learning_rates,
             Hyperparam.Rho: rho_values,
         },
+        Optimizer.SAM_Messy_LossNGD: {
+            Hyperparam.LearningRate: learning_rates,
+            Hyperparam.Rho: rho_values,
+        },
         Optimizer.SAM_VecNGD: {
+            Hyperparam.LearningRate: learning_rates,
+            Hyperparam.Rho: rho_values,
+        },
+        Optimizer.SAM_Messy_VecNGD: {
             Hyperparam.LearningRate: learning_rates,
             Hyperparam.Rho: rho_values,
         },
@@ -132,7 +148,7 @@ def main():
     # === Plotting ===
     plot_all(
         results,
-        experiment_name="sgd_soudry_rho_sweep",
+        experiment_name="sgd_soudry_messy__weird_idea",
         save_separate=False,
     )
 

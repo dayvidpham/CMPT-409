@@ -842,7 +842,8 @@ def plot_stability_analysis(
     """
     Plots stability metrics in a grid:
     Rows = Base Optimizer Types (GD, LossNGD, VecNGD, Adam, AdaGrad)
-    Cols = [Base: W_Norm, Update_Norm, Ratio] | [SAM: W_Norm, Update_Norm, Ratio]
+    Cols = [Base metrics..., SAM metrics...], where metrics include the weight norm,
+           gradient norm, update norm, and grad/loss ratio (when available).
 
     Color scheme:
     - Hue: Learning Rate
@@ -857,8 +858,17 @@ def plot_stability_analysis(
 
     # Extract stability metrics from task
     metric_keys = task.keys
-    stability_metrics = [Metric.WeightNorm, Metric.UpdateNorm, Metric.GradLossRatio]
-    metrics = [k.metric for k in metric_keys if k.metric in stability_metrics]
+    stability_metrics = [
+        Metric.WeightNorm,
+        Metric.GradNorm,
+        Metric.UpdateNorm,
+        Metric.GradLossRatio,
+    ]
+    metrics = [
+        metric
+        for metric in stability_metrics
+        if any(k.metric == metric for k in metric_keys)
+    ]
 
     if not metrics:
         return
@@ -866,7 +876,7 @@ def plot_stability_analysis(
     # Sort base optimizers by name
     base_opts = sorted(pairs.keys(), key=lambda x: x.name)
     nrows = len(pairs)
-    ncols = 6  # 3 metrics × 2 groups (Base, SAM)
+    ncols = len(metrics) * 2  # metrics × [Base, SAM]
 
     fig, axes = plt.subplots(
         nrows, ncols,
@@ -911,9 +921,9 @@ def plot_stability_analysis(
     for row_idx, base_opt in enumerate(base_opts):
         sam_opt = pairs[base_opt]
 
-        # Iterate: Base (first 3 cols), SAM (next 3 cols)
+        # Iterate: Base (first half cols), SAM (next half)
         for group_idx, opt in enumerate([base_opt, sam_opt]):
-            col_offset = group_idx * 3
+            col_offset = group_idx * len(metrics)
             configs = [c for c in results.keys() if c.optimizer == opt]
 
             for m_idx, metric in enumerate(metrics):
@@ -1272,7 +1282,9 @@ def _identify_optimizer_pairs(
     sam_mappings = {
         Optimizer.GD: Optimizer.SAM,
         Optimizer.LossNGD: Optimizer.SAM_LossNGD,
+        Optimizer.SAM_LossNGD: Optimizer.SAM_Messy_LossNGD,
         Optimizer.VecNGD: Optimizer.SAM_VecNGD,
+        Optimizer.SAM_VecNGD: Optimizer.SAM_Messy_VecNGD,
         Optimizer.NGD: Optimizer.SAM_NGD,  # Backward compatibility
         Optimizer.Adam: Optimizer.SAM_Adam,
         Optimizer.AdaGrad: Optimizer.SAM_AdaGrad,
@@ -1482,4 +1494,3 @@ def save_results_npz(
                 data[npz_key] = values
 
     np.savez(filepath, **data)  # type: ignore[call-arg]
-
