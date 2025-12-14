@@ -49,7 +49,7 @@ def main():
     w_star = get_empirical_max_margin(X, y)
 
     # Split data
-    datasets = split_train_test(X, y, test_size=40, random_state=42)
+    datasets = split_train_test(X, y, test_size=40)
 
     # Model factory
     def model_factory():
@@ -133,6 +133,7 @@ def main():
     plot_all(
         results,
         experiment_name="soudry",
+        save_separate=False,
     )
 
 
