@@ -12,17 +12,25 @@ from engine import (
     MetricsCollector,
     split_train_test,
     make_soudry_dataset,
-    exponential_loss,
     get_error_rate,
     expand_sweep_grid,
 )
-from engine.optimizers.manual import ManualGD, ManualLossNGD, ManualVecNGD, ManualSAM, ManualSAM_LossNGD, ManualSAM_VecNGD
+from engine.losses import ExponentialLoss
+from engine.optimizers.manual import (
+    ManualGD,
+    ManualLossNGD,
+    ManualVecNGD,
+    ManualSAM,
+    ManualSAM_LossNGD,
+    ManualSAM_VecNGD,
+)
 from engine.plotting import plot_all
 import torch
 import os
 
 # Configure PyTorch to use all CPU cores
 torch.set_num_threads(os.cpu_count())
+
 
 def main():
     # Use GPU if available
@@ -52,10 +60,10 @@ def main():
     def metrics_factory(model):
         return MetricsCollector(
             metric_fns={
-                Metric.Loss: exponential_loss,
+                Metric.Loss: ExponentialLoss(),
                 Metric.Error: get_error_rate,
             },
-            w_star=None  # No reference solution for multi-layer
+            w_star=None,  # No reference solution for multi-layer
         )
 
     # ----------------------------------------------------------
@@ -114,16 +122,13 @@ def main():
         metrics_collector_factory=metrics_factory,
         train_split=DatasetSplit.Train,
         total_iters=total_iters,
-        debug=True
+        debug=True,
     )
 
     # ----------------------------------------------------------
     # Plot
     # ----------------------------------------------------------
-    plot_all(
-        results,
-        experiment_name="2layers_gd_family"
-    )
+    plot_all(results, experiment_name="2layers_gd_family")
 
 
 if __name__ == "__main__":

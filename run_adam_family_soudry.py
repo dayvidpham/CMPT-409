@@ -10,13 +10,12 @@ from engine import (
     split_train_test,
     make_soudry_dataset,
     get_empirical_max_margin,
-    ExponentialLoss,
-    LogisticLoss,
     get_error_rate,
     get_angle,
     get_direction_distance,
     expand_sweep_grid,
 )
+from engine.losses import ExponentialLoss, LogisticLoss
 from engine.metrics import get_weight_norm, compute_update_norm
 from engine.optimizers import Adam, AdaGrad, SAM_Adam, SAM_AdaGrad
 from engine.plotting import plot_all
@@ -33,6 +32,7 @@ torch.set_num_threads(os.cpu_count())
 # np.random.seed(SEED)
 # random.seed(SEED)
 # torch.manual_seed(SEED)
+
 
 def main():
     # Use GPU if available
@@ -70,7 +70,7 @@ def main():
                 Metric.UpdateNorm: compute_update_norm,
                 Metric.GradLossRatio: loss_fn,  # Function not used, computed from grad_norm/loss
             },
-            w_star=w_star
+            w_star=w_star,
         )
 
     # Optimizer factories (using adaptive.py for LinearModel)
@@ -113,14 +113,12 @@ def main():
         metrics_collector_factory=metrics_factory,
         train_split=DatasetSplit.Train,
         total_iters=10_000,
-        debug=True
+        debug=True,
     )
 
     # Plotting
-    plot_all(
-        results,
-        experiment_name="adam_family_soudry"
-    )
+    plot_all(results, experiment_name="adam_family_soudry")
+
 
 if __name__ == "__main__":
     main()

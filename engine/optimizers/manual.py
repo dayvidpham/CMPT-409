@@ -9,7 +9,9 @@ from ..constants import CLAMP_MIN, CLAMP_MAX
 # --- Manual Optimized Factories ---
 
 
-def ManualAdam(lr: float = 1e-3, betas=(0.9, 0.999), eps=1e-8, loss: Loss = ExponentialLoss()):
+def ManualAdam(
+    lr: float = 1e-3, betas=(0.9, 0.999), eps=1e-8, loss: Loss = ExponentialLoss()
+):
     return ManualTwolayerAdam(lr=lr, betas=betas, eps=eps, loss=loss)
 
 
@@ -17,11 +19,19 @@ def ManualAdaGrad(lr: float = 1e-2, eps=1e-8, loss: Loss = ExponentialLoss()):
     return ManualTwolayerAdaGrad(lr=lr, eps=eps, loss=loss)
 
 
-def ManualSAM_Adam(lr: float = 1e-3, rho=0.05, betas=(0.9, 0.999), eps=1e-8, loss: Loss = ExponentialLoss()):
+def ManualSAM_Adam(
+    lr: float = 1e-3,
+    rho=0.05,
+    betas=(0.9, 0.999),
+    eps=1e-8,
+    loss: Loss = ExponentialLoss(),
+):
     return ManualTwolayerSAM_Adam(lr=lr, rho=rho, betas=betas, eps=eps, loss=loss)
 
 
-def ManualSAM_AdaGrad(lr: float = 1e-2, rho=0.05, eps=1e-8, loss: Loss = ExponentialLoss()):
+def ManualSAM_AdaGrad(
+    lr: float = 1e-2, rho=0.05, eps=1e-8, loss: Loss = ExponentialLoss()
+):
     return ManualTwolayerSAM_AdaGrad(lr=lr, rho=rho, eps=eps, loss=loss)
 
 
@@ -78,6 +88,8 @@ def _compute_grads(
     Returns:
         (W1_grad, W2_grad) if return_loss=False, else (W1_grad, W2_grad, loss)
     """
+    N = X.shape[0]  # Batch size
+
     # 1. Forward
     # Z = X @ W1.T  (N, k)
     # S = Z @ W2.T  (N, 1)
@@ -90,8 +102,7 @@ def _compute_grads(
     margins = torch.clamp(y * S, clamp_min, clamp_max)
     exp_neg_margins = torch.exp(-margins)
     coeffs = -exp_neg_margins * y
-    d_scores = loss_fn.grad_scores(S, y) / N
-
+    d_scores = loss_fn.grad_scores(S, y) / X.shape[0]
 
     # 3. Backward
     # dL/dW2 = d_scores.T @ Z   -> (1, N) @ (N, k) -> (1, k)
@@ -123,7 +134,14 @@ class ManualTwolayerAdam(OptimizerState):
     The loss parameter is accepted for API consistency but not used.
     """
 
-    def __init__(self, lr: float = 1e-3, betas=(0.9, 0.999), eps=1e-8, loss: Loss = ExponentialLoss(), metrics_collector=None):
+    def __init__(
+        self,
+        lr: float = 1e-3,
+        betas=(0.9, 0.999),
+        eps=1e-8,
+        loss: Loss = ExponentialLoss(),
+        metrics_collector=None,
+    ):
         super().__init__(metrics_collector)
         self.default_lr = lr
         self.betas = betas
@@ -150,7 +168,9 @@ class ManualTwolayerAdam(OptimizerState):
         W1, W2 = model.W1, model.W2
 
         with torch.no_grad():
-            W1_grad, W2_grad, loss = _compute_grads(W1, W2, X, y, return_loss=True, loss_fn=self.loss)
+            W1_grad, W2_grad, loss = _compute_grads(
+                W1, W2, X, y, return_loss=True, loss_fn=self.loss
+            )
 
             # Collect metrics
             gnorm = torch.sqrt(W1_grad.norm() ** 2 + W2_grad.norm() ** 2)  # type: ignore[arg-type]
@@ -186,7 +206,13 @@ class ManualTwolayerAdaGrad(OptimizerState):
     The loss parameter is accepted for API consistency but not used.
     """
 
-    def __init__(self, lr: float = 1e-2, eps=1e-8, loss: Loss = ExponentialLoss(), metrics_collector=None):
+    def __init__(
+        self,
+        lr: float = 1e-2,
+        eps=1e-8,
+        loss: Loss = ExponentialLoss(),
+        metrics_collector=None,
+    ):
         super().__init__(metrics_collector)
         self.default_lr = lr
         self.eps = eps
@@ -209,7 +235,9 @@ class ManualTwolayerAdaGrad(OptimizerState):
         W1, W2 = model.W1, model.W2
 
         with torch.no_grad():
-            W1_grad, W2_grad, loss = _compute_grads(W1, W2, X, y, return_loss=True, loss_fn=self.loss)
+            W1_grad, W2_grad, loss = _compute_grads(
+                W1, W2, X, y, return_loss=True, loss_fn=self.loss
+            )
 
             # Collect metrics
             gnorm = torch.sqrt(W1_grad.norm() ** 2 + W2_grad.norm() ** 2)  # type: ignore[arg-type]
@@ -234,7 +262,15 @@ class ManualTwolayerSAM_Adam(OptimizerState):
     The loss parameter is accepted for API consistency but not used.
     """
 
-    def __init__(self, lr: float = 1e-3, rho=0.05, betas=(0.9, 0.999), eps=1e-8, loss: Loss = ExponentialLoss(), metrics_collector=None):
+    def __init__(
+        self,
+        lr: float = 1e-3,
+        rho=0.05,
+        betas=(0.9, 0.999),
+        eps=1e-8,
+        loss: Loss = ExponentialLoss(),
+        metrics_collector=None,
+    ):
         super().__init__(metrics_collector)
         self.default_lr = lr
         self.rho = rho
@@ -263,7 +299,9 @@ class ManualTwolayerSAM_Adam(OptimizerState):
 
         with torch.no_grad():
             # 1. First Step: Compute Gradients at current W
-            g1, g2, loss = _compute_grads(W1, W2, X, y, return_loss=True, loss_fn=self.loss)
+            g1, g2, loss = _compute_grads(
+                W1, W2, X, y, return_loss=True, loss_fn=self.loss
+            )
 
             # 2. Compute SAM Perturbation
             # Global norm over all params
@@ -308,7 +346,14 @@ class ManualTwolayerSAM_AdaGrad(OptimizerState):
     The loss parameter is accepted for API consistency but not used.
     """
 
-    def __init__(self, lr: float = 1e-2, rho=0.05, eps=1e-8, loss: Loss = ExponentialLoss(), metrics_collector=None):
+    def __init__(
+        self,
+        lr: float = 1e-2,
+        rho=0.05,
+        eps=1e-8,
+        loss: Loss = ExponentialLoss(),
+        metrics_collector=None,
+    ):
         super().__init__(metrics_collector)
         self.default_lr = lr
         self.rho = rho
@@ -332,7 +377,9 @@ class ManualTwolayerSAM_AdaGrad(OptimizerState):
 
         with torch.no_grad():
             # 1. First Step: Gradient at current W
-            g1, g2, loss = _compute_grads(W1, W2, X, y, return_loss=True, loss_fn=self.loss)
+            g1, g2, loss = _compute_grads(
+                W1, W2, X, y, return_loss=True, loss_fn=self.loss
+            )
 
             # 2. SAM Perturbation
             gnorm = torch.sqrt(g1.norm() ** 2 + g2.norm() ** 2)  # type: ignore[arg-type]
@@ -366,7 +413,9 @@ class ManualTwolayerGD(OptimizerState):
     The loss parameter is accepted for API consistency but not used.
     """
 
-    def __init__(self, lr: float = 1e-1, loss: Loss = ExponentialLoss(), metrics_collector=None):
+    def __init__(
+        self, lr: float = 1e-1, loss: Loss = ExponentialLoss(), metrics_collector=None
+    ):
         super().__init__(metrics_collector)
         self.default_lr = lr
         self.loss = loss  # For API consistency, not currently used
@@ -380,7 +429,9 @@ class ManualTwolayerGD(OptimizerState):
 
         with torch.no_grad():
             # 1. Compute Gradients
-            g1, g2, loss = _compute_grads(W1, W2, X, y, return_loss=True, loss_fn=self.loss)
+            g1, g2, loss = _compute_grads(
+                W1, W2, X, y, return_loss=True, loss_fn=self.loss
+            )
 
             # Collect metrics
             gnorm = torch.sqrt(g1.norm() ** 2 + g2.norm() ** 2)  # type: ignore[arg-type]
@@ -403,7 +454,9 @@ class ManualTwolayerLossNGD(OptimizerState):
     The loss parameter is accepted for API consistency but not used.
     """
 
-    def __init__(self, lr: float = 1e-1, loss: Loss = ExponentialLoss(), metrics_collector=None):
+    def __init__(
+        self, lr: float = 1e-1, loss: Loss = ExponentialLoss(), metrics_collector=None
+    ):
         super().__init__(metrics_collector)
         self.default_lr = lr
         self.loss = loss  # For API consistency, not currently used
@@ -417,7 +470,9 @@ class ManualTwolayerLossNGD(OptimizerState):
 
         with torch.no_grad():
             # 1. Compute Gradients and Loss
-            g1, g2, loss = _compute_grads(W1, W2, X, y, return_loss=True, loss_fn=self.loss)
+            g1, g2, loss = _compute_grads(
+                W1, W2, X, y, return_loss=True, loss_fn=self.loss
+            )
 
             # 2. Compute Global Norm (for checking if gradient is non-zero)
             gnorm_sq = g1.norm() ** 2 + g2.norm() ** 2
@@ -442,7 +497,9 @@ class ManualTwolayerVecNGD(OptimizerState):
     The loss parameter is accepted for API consistency but not used.
     """
 
-    def __init__(self, lr: float = 1e-1, loss: Loss = ExponentialLoss(), metrics_collector=None):
+    def __init__(
+        self, lr: float = 1e-1, loss: Loss = ExponentialLoss(), metrics_collector=None
+    ):
         super().__init__(metrics_collector)
         self.default_lr = lr
         self.loss = loss  # For API consistency, not currently used
@@ -456,7 +513,9 @@ class ManualTwolayerVecNGD(OptimizerState):
 
         with torch.no_grad():
             # 1. Compute Gradients
-            g1, g2, loss = _compute_grads(W1, W2, X, y, return_loss=True, loss_fn=self.loss)
+            g1, g2, loss = _compute_grads(
+                W1, W2, X, y, return_loss=True, loss_fn=self.loss
+            )
 
             # 2. Compute Global Norm
             gnorm = torch.sqrt(g1.norm() ** 2 + g2.norm() ** 2)  # type: ignore[arg-type]
@@ -478,7 +537,13 @@ class ManualTwolayerSAM(OptimizerState):
     The loss parameter is accepted for API consistency but not used.
     """
 
-    def __init__(self, lr: float = 1e-1, rho=0.05, loss: Loss = ExponentialLoss(), metrics_collector=None):
+    def __init__(
+        self,
+        lr: float = 1e-1,
+        rho=0.05,
+        loss: Loss = ExponentialLoss(),
+        metrics_collector=None,
+    ):
         super().__init__(metrics_collector)
         self.default_lr = lr
         self.rho = rho
@@ -493,7 +558,9 @@ class ManualTwolayerSAM(OptimizerState):
 
         with torch.no_grad():
             # 1. Compute Gradients at current W
-            g1, g2, loss = _compute_grads(W1, W2, X, y, return_loss=True, loss_fn=self.loss)
+            g1, g2, loss = _compute_grads(
+                W1, W2, X, y, return_loss=True, loss_fn=self.loss
+            )
 
             # 2. SAM Perturbation (Global Norm)
             gnorm = torch.sqrt(g1.norm() ** 2 + g2.norm() ** 2)  # type: ignore[arg-type]
@@ -524,7 +591,13 @@ class ManualTwolayerSAM_LossNGD(OptimizerState):
     The loss parameter is accepted for API consistency but not used.
     """
 
-    def __init__(self, lr: float = 1e-1, rho=0.05, loss: Loss = ExponentialLoss(), metrics_collector=None):
+    def __init__(
+        self,
+        lr: float = 1e-1,
+        rho=0.05,
+        loss: Loss = ExponentialLoss(),
+        metrics_collector=None,
+    ):
         super().__init__(metrics_collector)
         self.default_lr = lr
         self.rho = rho
@@ -539,7 +612,9 @@ class ManualTwolayerSAM_LossNGD(OptimizerState):
 
         with torch.no_grad():
             # 1. Compute Gradients at current W
-            g1, g2, loss = _compute_grads(W1, W2, X, y, return_loss=True, loss_fn=self.loss)
+            g1, g2, loss = _compute_grads(
+                W1, W2, X, y, return_loss=True, loss_fn=self.loss
+            )
 
             # 2. SAM Perturbation (Global Norm)
             gnorm = torch.sqrt(g1.norm() ** 2 + g2.norm() ** 2)  # type: ignore[arg-type]
@@ -553,7 +628,9 @@ class ManualTwolayerSAM_LossNGD(OptimizerState):
                 W2_adv = W2 + g2 * scale
 
                 # 3. Compute Gradients and Loss at perturbed W_adv
-                g1_adv, g2_adv, loss_adv = _compute_grads(W1_adv, W2_adv, X, y, return_loss=True, loss_fn=self.loss)
+                g1_adv, g2_adv, loss_adv = _compute_grads(
+                    W1_adv, W2_adv, X, y, return_loss=True, loss_fn=self.loss
+                )
 
                 # 4. Loss-Normalized GD Update
                 gnorm_adv = torch.sqrt(g1_adv.norm() ** 2 + g2_adv.norm() ** 2)  # type: ignore[arg-type]
@@ -575,7 +652,13 @@ class ManualTwolayerSAM_VecNGD(OptimizerState):
     The loss parameter is accepted for API consistency but not used.
     """
 
-    def __init__(self, lr: float = 1e-1, rho=0.05, loss: Loss = ExponentialLoss(), metrics_collector=None):
+    def __init__(
+        self,
+        lr: float = 1e-1,
+        rho=0.05,
+        loss: Loss = ExponentialLoss(),
+        metrics_collector=None,
+    ):
         super().__init__(metrics_collector)
         self.default_lr = lr
         self.rho = rho
@@ -590,7 +673,9 @@ class ManualTwolayerSAM_VecNGD(OptimizerState):
 
         with torch.no_grad():
             # 1. Compute Gradients at current W
-            g1, g2, loss = _compute_grads(W1, W2, X, y, return_loss=True, loss_fn=self.loss)
+            g1, g2, loss = _compute_grads(
+                W1, W2, X, y, return_loss=True, loss_fn=self.loss
+            )
 
             # 2. SAM Perturbation (Global Norm)
             gnorm = torch.sqrt(g1.norm() ** 2 + g2.norm() ** 2)  # type: ignore[arg-type]
@@ -604,7 +689,9 @@ class ManualTwolayerSAM_VecNGD(OptimizerState):
                 W2_adv = W2 + g2 * scale
 
                 # 3. Compute Gradients at perturbed W_adv
-                g1_adv, g2_adv = _compute_grads(W1_adv, W2_adv, X, y, return_loss=False, loss_fn=self.loss)
+                g1_adv, g2_adv = _compute_grads(
+                    W1_adv, W2_adv, X, y, return_loss=False, loss_fn=self.loss
+                )
 
                 # 4. Vector-Normalized GD Update
                 gnorm_adv = torch.sqrt(g1_adv.norm() ** 2 + g2_adv.norm() ** 2)  # type: ignore[arg-type]

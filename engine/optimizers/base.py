@@ -24,6 +24,7 @@ class OptimizerState(ABC):
             metrics_collector: Optional MetricsCollector to update with gradient norms
         """
         from ..metrics import MetricsCollector
+
         self.metrics_collector: Optional[MetricsCollector] = metrics_collector
 
     def collect_metrics(self, grad_norm: torch.Tensor, train_loss: torch.Tensor):
@@ -58,7 +59,9 @@ class OptimizerState(ABC):
 class StatelessOptimizer(OptimizerState):
     """Wrapper for stateless optimizers (GD, SAM, NGD)"""
 
-    def __init__(self, step_fn: Callable, loss: Optional[Loss] = None, metrics_collector=None):
+    def __init__(
+        self, step_fn: Callable, loss: Optional[Loss] = None, metrics_collector=None
+    ):
         super().__init__(metrics_collector)
         self.step_fn = step_fn
         self.loss_fn = loss or ExponentialLoss()  # Create once, reuse across all steps
@@ -77,7 +80,12 @@ class StatefulOptimizer(OptimizerState):
     Automatically handles initialization on the first step.
     """
 
-    def __init__(self, torch_opt_class: type[torch.optim.Optimizer], loss: Optional[Loss] = None, **kwargs):
+    def __init__(
+        self,
+        torch_opt_class: type[torch.optim.Optimizer],
+        loss: Optional[Loss] = None,
+        **kwargs,
+    ):
         self.opt_class = torch_opt_class
         self.kwargs = kwargs
         self.loss_fn = loss or ExponentialLoss()
@@ -102,6 +110,19 @@ class StatefulOptimizer(OptimizerState):
 
         # Backward & Step
         loss.backward()
+
+        # Collect metrics before optimizer step
+        with torch.no_grad():
+            # Compute gradient norm
+            grad_norm_sq = torch.tensor(0.0, device=model.device)
+            for param in model.parameters():
+                if param.grad is not None:
+                    grad_norm_sq += param.grad.norm() ** 2
+            grad_norm = grad_norm_sq.sqrt()
+
+            # Collect metrics
+            self.collect_metrics(grad_norm, loss.detach())
+
         self.optimizer.step()
 
     def reset(self):
@@ -116,7 +137,11 @@ class SAMOptimizer(OptimizerState):
     """
 
     def __init__(
-        self, torch_opt_class: type[torch.optim.Optimizer], rho: float = 0.05, loss: Optional[Loss] = None, **kwargs
+        self,
+        torch_opt_class: type[torch.optim.Optimizer],
+        rho: float = 0.05,
+        loss: Optional[Loss] = None,
+        **kwargs,
     ):
         self.opt_class = torch_opt_class
         self.kwargs = kwargs
@@ -136,16 +161,25 @@ class SAMOptimizer(OptimizerState):
         loss.backward()
 
         # Gather params with gradients
-        params_with_grad = [p for p in model.parameters() if p.grad is not None]
+        params_with_grad = []
+        grads = []
+        for p in model.parameters():
+            if p.grad is not None:
+                params_with_grad.append(p)
+                grads.append(p.grad)
+
         if not params_with_grad:
             return
 
-        grads = [p.grad for p in params_with_grad]
-
         with torch.no_grad():
             # 3. Compute GLOBAL norm across all parameters (like first_order.py and manual.py)
-            per_tensor_norms = torch._foreach_norm(grads, 2)
-            global_norm = torch.linalg.vector_norm(torch.stack(per_tensor_norms))
+            grad_norm_sq = torch.tensor(0.0, device=model.device)
+            for grad in grads:
+                grad_norm_sq += grad.norm() ** 2
+            global_norm = grad_norm_sq.sqrt()
+
+            # Collect metrics from first forward pass
+            self.collect_metrics(global_norm, loss.detach())
 
             # Save original parameters
             original_params = [p.clone() for p in params_with_grad]
@@ -154,7 +188,8 @@ class SAMOptimizer(OptimizerState):
             if global_norm > GRAD_TOL:
                 scale = self.rho / global_norm
                 # Perturb all parameters: p = p + (rho/||g||) * g
-                torch._foreach_add_(params_with_grad, grads, alpha=scale)
+                for i in range(len(params_with_grad)):
+                    params_with_grad[i].add_(grads[i], alpha=scale)
 
         # 5. Second forward/backward at perturbed point
         self.optimizer.zero_grad()
