@@ -46,7 +46,14 @@ def make_soudry_dataset(
     y_torch = torch.tensor(y[idx], dtype=torch.float64, device=device)
     v_torch = torch.tensor(v, dtype=torch.float64, device=device)
 
-    return X_torch, y_torch, v_torch
+    # Normalize by the maximum L2 norm across all data points
+    max_norm = torch.linalg.norm(X_torch, dim=1).max()
+    if max_norm > 0:
+        X_rescaled = X_torch / max_norm
+    else:
+        X_rescaled = X_torch
+
+    return X_rescaled, y_torch, v_torch
 
 
 def split_train_test(
