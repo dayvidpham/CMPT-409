@@ -58,10 +58,12 @@ def get_angle(w: torch.Tensor, w_star: torch.Tensor) -> torch.Tensor:
     if w_star.device != w.device:
         w_star_flat = w_star_flat.to(w.device)
 
-    # Compute angle
-    n_w = torch.norm(w_flat)
-    n_star = torch.norm(w_star_flat)
-    dot_val = torch.dot(n_w, n_star)
+    # Normalize the vectors
+    w_normalized = w_flat / w_flat.norm()
+    w_star_normalized = w_star_flat / w_star_flat.norm()
+
+    # Compute angle via dot product of normalized vectors
+    dot_val = torch.dot(w_normalized, w_star_normalized)
     cos_angle = torch.clamp(dot_val, -1.0, 1.0)
     angle = torch.acos(cos_angle)
 
@@ -80,16 +82,20 @@ def get_direction_distance(w: torch.Tensor, w_star: torch.Tensor) -> torch.Tenso
         Distance (Python float)
     """
 
+    # Flatten vectors
+    w_flat = w.flatten()
+    w_star_flat = w_star.flatten()
+
     # Ensure same device
     if w_star.device != w.device:
-        w_star = w_star.to(w.device)
+        w_star_flat = w_star_flat.to(w.device)
 
     # Normalize both vectors
-    w_norm = w.norm()
-    w_star_norm = w_star.norm()
+    w_normalized = w_flat / w_flat.norm()
+    w_star_normalized = w_star_flat / w_star_flat.norm()
 
-    # Compute distance
-    diff = w_norm - w_star_norm
+    # Compute distance between normalized directions
+    diff = w_normalized - w_star_normalized
     distance = torch.norm(diff)
 
     return distance
