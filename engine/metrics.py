@@ -49,9 +49,8 @@ def get_angle(w: torch.Tensor, w_star: torch.Tensor) -> torch.Tensor:
         w_star: Reference weight vector
 
     Returns:
-        Angle in radians (Python float)
+        Angle in radians
     """
-    eps = 1e-12
     w_flat = w.flatten()
     w_star_flat = w_star.flatten()
 
@@ -60,10 +59,10 @@ def get_angle(w: torch.Tensor, w_star: torch.Tensor) -> torch.Tensor:
         w_star_flat = w_star_flat.to(w.device)
 
     # Compute angle
-    dot_val = torch.dot(w_flat, w_star_flat)
     n_w = torch.norm(w_flat)
     n_star = torch.norm(w_star_flat)
-    cos_angle = torch.clamp(dot_val / (n_w * n_star + eps), -1.0, 1.0)
+    dot_val = torch.dot(n_w, n_star)
+    cos_angle = torch.clamp(dot_val, -1.0, 1.0)
     angle = torch.acos(cos_angle)
 
     return angle
