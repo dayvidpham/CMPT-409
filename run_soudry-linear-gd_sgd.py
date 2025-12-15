@@ -1,4 +1,4 @@
-"""Mini-batch SGD experiments on Soudry dataset with hyperparameter sweeps."""
+"""Full-batch GD experiments on Soudry dataset."""
 
 import torch
 import os
@@ -19,39 +19,40 @@ from engine import (
     get_direction_distance,
     expand_sweep_grid,
 )
+from engine.metrics import get_weight_norm, compute_update_norm
 from engine.losses import LogisticLoss
-
 from engine.optimizers import (
-    step_sgd,
+    step_gd,
+    step_sam_stable,
     step_loss_ngd,
     step_vec_ngd,
-    step_sam_stable,
     step_sam_loss_ngd,
     step_sam_vec_ngd,
     make_optimizer_factory,
 )
-from engine.metrics import get_weight_norm, compute_update_norm
 from engine.plotting import plot_all
 
+# Configure PyTorch to use half the CPU cores
 cpu_count = os.cpu_count()
 if cpu_count is not None:
     torch.set_num_threads(cpu_count // 2)
 
 
 def main():
+    # Use GPU if available
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    # === Dataset ===
-    X, y, v_pop = make_soudry_dataset(n=200, d=5000, device=device)
+    # Generate dataset
+    X, y, v_pop = make_soudry_dataset(n=200, d=5000, margin=1.0, device=device)
     w_star = get_empirical_max_margin(X, y)
+
+    # Split data
     datasets = split_train_test(X, y, test_size=40)
 
-    # === Model factory ===
-    input_dim = X.shape[1]
-
+    # Model factory
     def model_factory():
-        return LinearModel(input_dim, device=device)
+        return LinearModel(X.shape[1], device=device)
 
     # === Loss function (configurable) ===
     # Choose which loss function to use
@@ -76,8 +77,8 @@ def main():
 
     # === Optimizer factories ===
     # All optimizers use the same configured loss function
-    optimizer_factories = {
-        Optimizer.GD: make_optimizer_factory(step_sgd, loss=loss_fn),
+    optimizer_logistic_factories = {
+        Optimizer.GD: make_optimizer_factory(step_gd, loss=loss_fn),
         Optimizer.LossNGD: make_optimizer_factory(step_loss_ngd, loss=loss_fn),
         Optimizer.VecNGD: make_optimizer_factory(step_vec_ngd, loss=loss_fn),
         Optimizer.SAM: make_optimizer_factory(step_sam_stable, loss=loss_fn),
@@ -114,10 +115,32 @@ def main():
     }
 
     # Expand to concrete configurations
-    optimizer_configs = expand_sweep_grid(optimizer_factories, sweeps)
+    optimizer_configs = expand_sweep_grid(optimizer_logistic_factories, sweeps)
 
-    # === Training ===
-    results = run_training(
+    # ==== Run deterministic ====
+    deterministic_results = run_training(
+        datasets=datasets,
+        model_factory=model_factory,
+        optimizers=optimizer_configs,
+        metrics_collector_factory=metrics_factory,
+        train_split=DatasetSplit.Train,
+        total_iters=10_000,
+        debug=True,
+    )
+
+    # Plotting
+    plot_all(
+        deterministic_results,
+        experiment_name="soudry_linear_whole_schebang/deterministic",
+        save_separate=False,    # slow af
+        save_aggregated=False,  # deprecated
+        save_combined=False,    # deprecated
+    )
+
+
+
+    # ==== Run stochastic ====
+    stochastic_results = run_training(
         datasets=datasets,
         model_factory=model_factory,
         optimizers=optimizer_configs,
@@ -129,11 +152,13 @@ def main():
         debug=True,
     )
 
-    # === Plotting ===
+    # Plotting
     plot_all(
-        results,
-        experiment_name="soudry_sgd",
-        save_separate=False,
+        stochastic_results,
+        experiment_name="soudry_linear_whole_schebang/stochastic",
+        save_separate=False,    # slow af
+        save_aggregated=False,  # deprecated
+        save_combined=False,    # deprecated
     )
 
 

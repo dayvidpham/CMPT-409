@@ -87,8 +87,8 @@ def main():
     }
 
     # === Hyperparameter sweeps ===
-    learning_rates = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0]
-    rho_values = [0.05, 0.1, 0.5, 1.0, 5.0, 15.0, 50.0]
+    learning_rates = [1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2]
+    rho_values = [1e-2, 1e-1, 1e0, 1e1, 1e2, 1e3]
 
     sweeps = {
         Optimizer.GD: {
@@ -124,14 +124,14 @@ def main():
         optimizers=optimizer_configs,
         metrics_collector_factory=metrics_factory,
         train_split=DatasetSplit.Train,
-        total_iters=100_000,
+        total_iters=10_000,
         debug=True,
     )
 
     # Plotting
     plot_all(
         results,
-        experiment_name="soudry",
+        experiment_name="soudry_gd",
         save_separate=False,
     )
 
