@@ -231,26 +231,24 @@ def _step_sam_loss_ngd_impl(
                         model.w -= lr * (grad_adv / loss_adv)
                 else:
                     # Messy variant: gradient sampled at w + eps, denominator from ||grad(w - eps)||.
-                    w_pos = model.w + eps
+                    # w_pos = model.w + eps
                     w_neg = model.w - eps
 
                     if hasattr(loss_fn, 'grad_linear_with_loss'):
-                        grad_pos, _ = loss_fn.grad_linear_with_loss(X, y, w_pos)
+                        #grad_pos, _ = loss_fn.grad_linear_with_loss(X, y, w_pos)
                         grad_neg, loss_neg = loss_fn.grad_linear_with_loss(X, y, w_neg)
                     else:
-                        grad_pos = loss_fn.grad_linear(X, y, w_pos)
+                        # grad_pos = loss_fn.grad_linear(X, y, w_pos)
                         grad_neg = loss_fn.grad_linear(X, y, w_neg)
                         scores_neg = X @ w_neg
                         loss_neg = loss_fn(scores_neg, y)
 
-                    grad_neg_norm = grad_neg.norm()
+                    # grad_neg_norm = grad_neg.norm()
 
                     # Previous behavior for messy SAM Loss-NGD:
-                    # if grad_neg_norm > grad_tol:
-                    #     model.w -= lr * (grad_neg / loss_neg)
+                    if loss_neg > grad_tol:
+                        model.w -= lr * (grad_neg / loss_neg)
 
-                    if grad_neg_norm > grad_tol:
-                        model.w -= lr * (grad_pos / grad_neg_norm)
     else:
         raise NotImplementedError("Use ManualSAM_NGD instead")
 
@@ -345,9 +343,9 @@ def _step_sam_vec_ngd_impl(
                         model.w -= lr * (grad_adv / grad_adv_norm)
                 else:
                     # Messy variant: use gradient from w + eps, scale by ||grad(w - eps)||.
-                    w_pos = model.w + eps
+                    # w_pos = model.w + eps
                     w_neg = model.w - eps
-                    grad_pos = loss_fn.grad_linear(X, y, w_pos)
+                    # grad_pos = loss_fn.grad_linear(X, y, w_pos)
                     grad_neg = loss_fn.grad_linear(X, y, w_neg)
                     grad_neg_norm = grad_neg.norm()
 
@@ -356,6 +354,6 @@ def _step_sam_vec_ngd_impl(
                     #     model.w -= lr * (grad_neg / grad_neg_norm)
 
                     if grad_neg_norm > grad_tol:
-                        model.w -= lr * (grad_pos / grad_neg_norm)
+                        model.w -= lr * (grad_neg / grad_neg_norm)
     else:
         raise NotImplementedError("Use ManualSAM_VecNGD instead")
