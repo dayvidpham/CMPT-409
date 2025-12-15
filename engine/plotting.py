@@ -433,13 +433,13 @@ def plot_aggregated(
     # Create single legend above the plots (after suptitle for proper spacing)
     handles, labels = axes[0].get_legend_handles_labels()
     if handles:
-        fig.legend(
+        strategy.apply_legend(
+            fig,
+            axes[0],
             handles,
             labels,
-            loc="outside upper center",
             ncol=min(len(labels), 6),
             fontsize=8,
-            frameon=True,
         )
 
     plt.savefig(filepath, dpi=150, bbox_inches="tight")
@@ -653,13 +653,13 @@ def plot_combined(
         final_handles = handles
         final_labels = labels
 
-    fig.legend(
+    strategy.apply_legend(
+        fig,
+        axes[0],
         final_handles,
         final_labels,
-        loc="outside upper center",
         ncol=min(len(final_labels), 4),
         fontsize=8,
-        frameon=True,
     )
 
     plt.savefig(filepath, dpi=150, bbox_inches="tight")
@@ -1013,13 +1013,13 @@ def plot_hyperparam_grid(
         final_handles = opt_handles
         final_labels = opt_labels
 
-    fig.legend(
+    strategy.apply_legend(
+        fig,
+        axes[0, 0],
         final_handles,
         final_labels,
-        loc="outside upper center",
         ncol=min(len(final_labels), 6),
         fontsize=9,
-        frameon=True,
     )
 
     plt.savefig(filepath, dpi=150, bbox_inches="tight")
@@ -1284,15 +1284,15 @@ def plot_stability_analysis(
             c_rgb = _compute_rho_vibrancy_color(sample_lr, rho, all_lrs, all_rhos)
             legend_elements.append(Line2D([0], [0], color=c_rgb, lw=3, alpha=0.8, label=f"  rho={rho}"))
 
-    fig.suptitle(f"Stability Analysis: {task.display_title}", fontsize=14, y=1.20)
+    fig.suptitle(f"Stability Analysis: {task.display_title}", fontsize=14, y=1.25)
 
     if legend_elements:
-        fig.legend(
-            handles=legend_elements,
-            loc="outside upper center",
+        _apply_figure_legend(
+            fig,
+            axes[0, 0],
+            legend_elements,
             ncol=min(len(legend_elements), 8),
             fontsize=9,
-            frameon=True,
         )
 
     plt.savefig(filepath, dpi=150)
@@ -1539,16 +1539,16 @@ def plot_sam_comparison(
                 )
             )
 
-    strategy.apply_suptitle(fig, f"{task.display_title}: Base vs SAM Variants")
+    strategy.apply_suptitle(fig, f"{task.display_title}: Base vs SAM Variants", y=1.08)
 
     # Add legend at the top (after suptitle)
     if legend_elements:
-        fig.legend(
-            handles=legend_elements,
-            loc="outside upper center",
+        _apply_figure_legend(
+            fig,
+            axes[0, 0],
+            legend_elements,
             ncol=min(len(legend_elements), 6),
             fontsize=9,
-            frameon=True,
             fancybox=True,
         )
 
@@ -1583,6 +1583,54 @@ def _identify_optimizer_pairs(
             pairs[base] = sam
 
     return pairs
+
+
+def _apply_figure_legend(
+    fig: Any,
+    top_axes: Any,
+    handles: list,
+    labels: Optional[list] = None,
+    y_offset: float = 1.08,
+    **legend_kwargs
+) -> None:
+    """Helper to apply a legend positioned at the top of the topmost subplot.
+
+    Uses a blended transform to center the legend horizontally across the figure
+    while anchoring it vertically to the top subplot edge.
+
+    Args:
+        fig: Matplotlib figure object
+        top_axes: The topmost axes object (e.g., axes[0] or axes[0, 0])
+        handles: Legend handles
+        labels: Legend labels (optional - if None, labels are extracted from handles)
+        y_offset: Vertical offset above the top subplot (default 1.08 = 8% above)
+        **legend_kwargs: Additional keyword arguments to pass to fig.legend()
+    """
+    from matplotlib import transforms
+
+    # Blend figure x-coords (for centering) with axes y-coords (for top positioning)
+    trans = transforms.blended_transform_factory(fig.transFigure, top_axes.transAxes)
+
+    # Set defaults that can be overridden
+    defaults = {
+        "loc": "lower center",
+        "bbox_to_anchor": (0.5, y_offset),
+        "bbox_transform": trans,
+        "frameon": True,
+        "handlelength": 2.0,
+        "handleheight": 0.7,
+        "labelspacing": 0.3,
+        "columnspacing": 1.5,
+    }
+
+    # Merge defaults with user-provided kwargs (user kwargs take precedence)
+    legend_config = {**defaults, **legend_kwargs}
+
+    # If labels provided, pass both handles and labels; otherwise let matplotlib extract labels
+    if labels is not None:
+        fig.legend(handles, labels, **legend_config)
+    else:
+        fig.legend(handles=handles, **legend_config)
 
 
 def _compute_hyperparam_score(config: OptimizerConfig) -> float:

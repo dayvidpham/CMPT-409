@@ -196,6 +196,50 @@ class PlotStrategy:
         y = kwargs.pop("y", 1.05)
         fig.suptitle(title, fontsize=fontsize, y=y, **kwargs)
 
+    def apply_legend(
+        self,
+        fig: Any,
+        top_axes: Any,
+        handles: list,
+        labels: list,
+        y_offset: float = 1.08,
+        **legend_kwargs
+    ) -> None:
+        """Apply a legend positioned at the top of the topmost subplot.
+
+        Uses a blended transform to center the legend horizontally across the figure
+        while anchoring it vertically to the top subplot edge.
+
+        Args:
+            fig: Matplotlib figure object
+            top_axes: The topmost axes object (e.g., axes[0] or axes[0, 0])
+            handles: Legend handles
+            labels: Legend labels
+            y_offset: Vertical offset above the top subplot (default 1.08 = 8% above)
+            **legend_kwargs: Additional keyword arguments to pass to fig.legend()
+        """
+        from matplotlib import transforms
+
+        # Blend figure x-coords (for centering) with axes y-coords (for top positioning)
+        trans = transforms.blended_transform_factory(fig.transFigure, top_axes.transAxes)
+
+        # Set defaults that can be overridden
+        defaults = {
+            "loc": "lower center",
+            "bbox_to_anchor": (0.5, y_offset),
+            "bbox_transform": trans,
+            "frameon": True,
+            "handlelength": 2.0,
+            "handleheight": 0.7,
+            "labelspacing": 0.3,
+            "columnspacing": 1.5,
+        }
+
+        # Merge defaults with user-provided kwargs (user kwargs take precedence)
+        legend_config = {**defaults, **legend_kwargs}
+
+        fig.legend(handles, labels, **legend_config)
+
 
 # Factory Functions (Presets)
 
