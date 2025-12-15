@@ -29,10 +29,11 @@ class PlotTask:
     Defines a specific plotting job.
     Can represent a single split (e.g., Train Loss) or a mixed split (e.g., Combined Loss).
     """
+
     metric: Metric
     keys: List[MetricKey]
-    filename_prefix: str    # e.g., "train_loss" or "loss"
-    display_title: str      # e.g., "Train Loss" or "Loss"
+    filename_prefix: str  # e.g., "train_loss" or "loss"
+    display_title: str  # e.g., "Train Loss" or "Loss"
 
     @property
     def base_label(self) -> str:
@@ -118,12 +119,14 @@ def plot_all(
 
         # --- Task A: Combined / Mixed Split ---
         # Contains ALL keys for this metric
-        tasks.append(PlotTask(
-            metric=metric,
-            keys=keys,
-            filename_prefix=metric.name.lower(),  # e.g. "loss"
-            display_title=metric.display_name    # e.g. "Loss"
-        ))
+        tasks.append(
+            PlotTask(
+                metric=metric,
+                keys=keys,
+                filename_prefix=metric.name.lower(),  # e.g. "loss"
+                display_title=metric.display_name,  # e.g. "Loss"
+            )
+        )
 
         # --- Task B & C: Specific Splits (Loss metric only) ---
         # Only create split-specific tasks for Loss metric
@@ -138,12 +141,14 @@ def plot_all(
 
             # Create distinct tasks for each split found (Train, Test)
             for split, split_keys in keys_by_split.items():
-                tasks.append(PlotTask(
-                    metric=metric,
-                    keys=split_keys,
-                    filename_prefix=f"{split.name.lower()}_{metric.name.lower()}",  # e.g. "train_loss"
-                    display_title=f"{split.name} {metric.display_name}"            # e.g. "Train Loss"
-                ))
+                tasks.append(
+                    PlotTask(
+                        metric=metric,
+                        keys=split_keys,
+                        filename_prefix=f"{split.name.lower()}_{metric.name.lower()}",  # e.g. "train_loss"
+                        display_title=f"{split.name} {metric.display_name}",  # e.g. "Train Loss"
+                    )
+                )
 
         # --- Dispatch Tasks to Plotters ---
         def get_path(task: PlotTask, folder: str, suffix: str = "") -> Path:
@@ -159,27 +164,35 @@ def plot_all(
 
             if save_combined:
                 plot_combined(
-                    results, configs_by_lr, learning_rates,
+                    results,
+                    configs_by_lr,
+                    learning_rates,
                     task,
                     strategy,
-                    get_path(task, "combined")
+                    get_path(task, "combined"),
                 )
 
             if save_separate:
                 for config in all_configs:
                     plot_separate(
-                        results, config,
+                        results,
+                        config,
                         task,
                         strategy,
-                        base_dir / "separate" / config.dir_name / f"{task.filename_prefix}.png"
+                        base_dir
+                        / "separate"
+                        / config.dir_name
+                        / f"{task.filename_prefix}.png",
                     )
 
             if save_aggregated:
                 plot_aggregated(
-                    results, configs_by_lr, learning_rates,
+                    results,
+                    configs_by_lr,
+                    learning_rates,
                     task,
                     strategy,
-                    get_path(task, "aggregated", "_comparison")
+                    get_path(task, "aggregated", "_comparison"),
                 )
 
         # Generate hyperparameter grid plots for appropriate tasks
@@ -202,10 +215,12 @@ def plot_all(
 
             for task in tasks:
                 plot_hyperparam_grid(
-                    results, learning_rates_for_grid, rho_values,
+                    results,
+                    learning_rates_for_grid,
+                    rho_values,
                     task,
                     strategy,
-                    get_path(task, "hyperparam_grid", "_grid")
+                    get_path(task, "hyperparam_grid", "_grid"),
                 )
 
         # Detect if we have base/SAM optimizer pairs
@@ -218,25 +233,27 @@ def plot_all(
                     results,
                     task,
                     strategy,
-                    get_path(task, "sam_comparison", "_sam_comparison")
+                    get_path(task, "sam_comparison", "_sam_comparison"),
                 )
 
     # Detect if we have stability metrics and dispatch stability analysis
     # Stability metrics should have split=None
-    stability_keys = [k for k in metric_keys if k.metric.requires_model_artifact and k.split is None]
+    stability_keys = [
+        k for k in metric_keys if k.metric.requires_model_artifact and k.split is None
+    ]
 
     if stability_keys:
         stability_task = PlotTask(
             metric=Metric.WeightNorm,  # Placeholder Metric type for the group
             keys=stability_keys,
             filename_prefix="stability_analysis",
-            display_title="Numerical Stability Metrics"
+            display_title="Numerical Stability Metrics",
         )
 
         plot_stability_analysis(
             results,
             stability_task,
-            base_dir / "stability_analysis" / "stability_analysis.png"
+            base_dir / "stability_analysis" / "stability_analysis.png",
         )
 
 
@@ -256,7 +273,6 @@ def _get_histories(
     if isinstance(entry, list):
         return entry
     return [entry]
-
 
 
 def plot_aggregated(
@@ -286,7 +302,9 @@ def plot_aggregated(
 
     opt_names = sorted(optimizer_types.keys())
     ncols = len(opt_names)
-    fig, axes = plt.subplots(1, ncols, figsize=(6 * ncols, 5), sharey=True, constrained_layout=True)
+    fig, axes = plt.subplots(
+        1, ncols, figsize=(6 * ncols, 5), sharey=True, constrained_layout=True
+    )
     if ncols == 1:
         axes = [axes]
 
@@ -378,7 +396,10 @@ def plot_aggregated(
 
     repeat_text = f", Repeated x{num_repeats}" if num_repeats > 1 else ""
     split_prefix = f"{split_name} " if split_name else ""
-    strategy.apply_suptitle(fig, f"{split_prefix}{key.metric.display_name} Comparison for each Optimizer{repeat_text}")
+    strategy.apply_suptitle(
+        fig,
+        f"{split_prefix}{key.metric.display_name} Comparison for each Optimizer{repeat_text}",
+    )
 
     # Create single legend above the plots (after suptitle for proper spacing)
     handles, labels = axes[0].get_legend_handles_labels()
@@ -396,7 +417,6 @@ def plot_aggregated(
     plt.close()
 
 
-
 def plot_combined(
     results: ResultsType,
     configs_by_lr: Mapping[float, List[OptimizerConfig]],
@@ -410,7 +430,9 @@ def plot_combined(
 
     metric_keys = task.keys
     ncols = len(learning_rates)
-    fig, axes = plt.subplots(1, ncols, figsize=(5 * ncols, 4.5), sharey=True, constrained_layout=True)
+    fig, axes = plt.subplots(
+        1, ncols, figsize=(5 * ncols, 4.5), sharey=True, constrained_layout=True
+    )
     if ncols == 1:
         axes = [axes]
 
@@ -432,7 +454,16 @@ def plot_combined(
     )
 
     # Assign different colormaps to each optimizer type for variety
-    colormap_names = ["Blues", "Oranges", "Greens", "Reds", "Purples", "YlOrBr", "PuBu", "RdPu"]
+    colormap_names = [
+        "Blues",
+        "Oranges",
+        "Greens",
+        "Reds",
+        "Purples",
+        "YlOrBr",
+        "PuBu",
+        "RdPu",
+    ]
     opt_colormaps = {
         opt: plt.get_cmap(colormap_names[i % len(colormap_names)])
         for i, opt in enumerate(all_optimizer_names)
@@ -471,7 +502,9 @@ def plot_combined(
                         normalized = 0.6
                     else:
                         # Map to range [0.3, 0.9] to avoid too light/dark colors
-                        normalized = 0.3 + 0.6 * (score - min_score) / (max_score - min_score)
+                        normalized = 0.3 + 0.6 * (score - min_score) / (
+                            max_score - min_score
+                        )
                     config_colors[config] = cmap(normalized)
 
         for config in configs:
@@ -550,22 +583,39 @@ def plot_combined(
 
     # Add figure title BEFORE legend for proper spacing
     strategy.apply_suptitle(
-        fig, f"{metric_keys[0].metric.display_name} for each Learning Rate")
+        fig, f"{metric_keys[0].metric.display_name} for each Learning Rate"
+    )
 
     # Create single legend at the top (after suptitle)
     handles, labels = axes[0].get_legend_handles_labels()
 
     # Add split style indicators if needed
     from matplotlib.lines import Line2D
+
     if show_split_styles:
         # Remove duplicates from automatic legend
         by_label = dict(zip(labels, handles))
 
         # Add manual legend entries for split styles
         style_handles = [
-            Line2D([0], [0], color='black', linestyle='-', linewidth=2, label='Test (Solid)'),
-            Line2D([0], [0], color='black', linestyle='--', linewidth=2, alpha=0.5, label='Train (Dashed)'),
-            Line2D([0], [0], color='none', label=' ')  # Spacer
+            Line2D(
+                [0],
+                [0],
+                color="black",
+                linestyle="-",
+                linewidth=2,
+                label="Test (Solid)",
+            ),
+            Line2D(
+                [0],
+                [0],
+                color="black",
+                linestyle="--",
+                linewidth=2,
+                alpha=0.5,
+                label="Train (Dashed)",
+            ),
+            Line2D([0], [0], color="none", label=" "),  # Spacer
         ]
 
         final_handles = style_handles + list(by_label.values())
@@ -585,7 +635,6 @@ def plot_combined(
 
     plt.savefig(filepath, dpi=150, bbox_inches="tight")
     plt.close()
-
 
 
 def plot_separate(
@@ -652,15 +701,31 @@ def plot_separate(
 
     # Create legend with split styles if needed
     from matplotlib.lines import Line2D
+
     if show_split_styles:
         handles, labels = ax.get_legend_handles_labels()
         by_label = dict(zip(labels, handles))
 
         # Add manual legend entries for split styles
         style_handles = [
-            Line2D([0], [0], color='black', linestyle='-', linewidth=2, label='Test (Solid)'),
-            Line2D([0], [0], color='black', linestyle='--', linewidth=2, alpha=0.5, label='Train (Dashed)'),
-            Line2D([0], [0], color='none', label=' ')  # Spacer
+            Line2D(
+                [0],
+                [0],
+                color="black",
+                linestyle="-",
+                linewidth=2,
+                label="Test (Solid)",
+            ),
+            Line2D(
+                [0],
+                [0],
+                color="black",
+                linestyle="--",
+                linewidth=2,
+                alpha=0.5,
+                label="Train (Dashed)",
+            ),
+            Line2D([0], [0], color="none", label=" "),  # Spacer
         ]
 
         final_handles = style_handles + list(by_label.values())
@@ -671,13 +736,11 @@ def plot_separate(
         ax.legend()
 
     # Add figure title
-    strategy.apply_suptitle(
-        fig, f"{task.display_title}: {config.name}")
+    strategy.apply_suptitle(fig, f"{task.display_title}: {config.name}")
 
     plt.tight_layout()
     plt.savefig(filepath, dpi=150, bbox_inches="tight")
     plt.close()
-
 
 
 def plot_hyperparam_grid(
@@ -696,7 +759,9 @@ def plot_hyperparam_grid(
 
     metric_keys = task.keys
     has_splits = any(key.split is not None for key in metric_keys)
-    is_loss_or_error = any(key.metric in (Metric.Loss, Metric.Error) for key in metric_keys)
+    is_loss_or_error = any(
+        key.metric in (Metric.Loss, Metric.Error) for key in metric_keys
+    )
     show_split_styles = has_splits and is_loss_or_error
 
     nrows = len(rho_values)
@@ -713,7 +778,8 @@ def plot_hyperparam_grid(
     )
 
     strategy.apply_suptitle(
-        fig, f"{task.display_title} Hyperparameter Grid (Rows=ρ, Cols=LR)")
+        fig, f"{task.display_title} Hyperparameter Grid (Rows=ρ, Cols=LR)"
+    )
 
     # Use a high-contrast colormap (Set1 or Dark2 are better for lines than tab10)
     # But sticking to tab10 for consistency with your other plots is fine if we fix the value issue.
@@ -743,19 +809,28 @@ def plot_hyperparam_grid(
                 for config in results.keys()
                 if config.learning_rate == lr
                 and config.get(Hyperparam.Rho, None) is None
-                and config.optimizer in (
+                and config.optimizer
+                in (
                     Optimizer.GD,
-                    Optimizer.NGD,          # Backward compatibility
-                    Optimizer.LossNGD,      # New
-                    Optimizer.VecNGD,       # New
+                    Optimizer.NGD,  # Backward compatibility
+                    Optimizer.LossNGD,  # New
+                    Optimizer.VecNGD,  # New
                     Optimizer.Adam,
-                    Optimizer.AdaGrad
+                    Optimizer.AdaGrad,
                 )
             ]
             matching_configs.extend(base_optimizers_no_rho)
 
             if not matching_configs:
-                ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes, color="gray")
+                ax.text(
+                    0.5,
+                    0.5,
+                    "No data",
+                    ha="center",
+                    va="center",
+                    transform=ax.transAxes,
+                    color="gray",
+                )
                 ax.set_xticks([])
                 ax.set_yticks([])
                 continue
@@ -769,19 +844,21 @@ def plot_hyperparam_grid(
 
                 # Get the base color for this optimizer
                 base_rgb = opt_colors[config.optimizer.name]
-                
+
                 if show_split_styles:
-                    train_keys = [k for k in metric_keys if k.split == DatasetSplit.Train]
+                    train_keys = [
+                        k for k in metric_keys if k.split == DatasetSplit.Train
+                    ]
                     test_keys = [k for k in metric_keys if k.split == DatasetSplit.Test]
 
                     # --- PLOT TRAIN (Background Context) ---
-                    # Strategy: Dashed line, lower opacity. 
+                    # Strategy: Dashed line, lower opacity.
                     # We do NOT change the color hue/value drastically, keeping it recognizable.
                     for key in train_keys:
                         all_values, steps = _collect_data(histories, key)
                         if all_values and steps is not None:
                             mean_vals, mean_steps = _aggregate_runs(all_values, steps)
-                            
+
                             ctx = PlotContext(
                                 ax=ax,
                                 x=mean_steps,
@@ -789,7 +866,7 @@ def plot_hyperparam_grid(
                                 label=f"{config.optimizer.name} (Train)",
                                 plot_kwargs={
                                     "color": base_rgb,
-                                    "alpha": 0.5,       # Make it visually recessive
+                                    "alpha": 0.5,  # Make it visually recessive
                                     "linestyle": "--",  # Distinct texture
                                     "linewidth": 1.5,
                                 },
@@ -797,7 +874,7 @@ def plot_hyperparam_grid(
                             strategy.plot(ctx)
 
                     # --- PLOT TEST (Foreground Focus) ---
-                    # Strategy: Solid line, full opacity. 
+                    # Strategy: Solid line, full opacity.
                     # This fixes the "muddy" issue by keeping colors vivid.
                     for key in test_keys:
                         all_values, steps = _collect_data(histories, key)
@@ -808,12 +885,12 @@ def plot_hyperparam_grid(
                                 ax=ax,
                                 x=mean_steps,
                                 y=mean_vals,
-                                label=f"{config.optimizer.name} (Test)", # Label this one for the legend
+                                label=f"{config.optimizer.name} (Test)",  # Label this one for the legend
                                 plot_kwargs={
                                     "color": base_rgb,
-                                    "alpha": 1.0,       # Full saturation/visibility
-                                    "linestyle": "-",   # Solid
-                                    "linewidth": 2.0,   # Slightly thicker
+                                    "alpha": 1.0,  # Full saturation/visibility
+                                    "linestyle": "-",  # Solid
+                                    "linewidth": 2.0,  # Slightly thicker
                                 },
                             )
                             strategy.plot(ctx)
@@ -825,9 +902,15 @@ def plot_hyperparam_grid(
                         if all_values and steps is not None:
                             mean_vals, mean_steps = _aggregate_runs(all_values, steps)
                             ctx = PlotContext(
-                                ax=ax, x=mean_steps, y=mean_vals,
+                                ax=ax,
+                                x=mean_steps,
+                                y=mean_vals,
                                 label=config.optimizer.name,
-                                plot_kwargs={"color": base_rgb, "alpha": 1.0, "linestyle": "-"},
+                                plot_kwargs={
+                                    "color": base_rgb,
+                                    "alpha": 1.0,
+                                    "linestyle": "-",
+                                },
                             )
                             strategy.plot(ctx)
 
@@ -847,17 +930,32 @@ def plot_hyperparam_grid(
     handles, labels = axes[0, 0].get_legend_handles_labels()
     # Filter duplicates from legend
     by_label = dict(zip(labels, handles))
-    
+
     if has_splits:
         # 2. Split Legend (Line Styles) - Manually created
         style_handles = [
-            Line2D([0], [0], color='black', linestyle='-', linewidth=2, label='Test (Solid)'),
-            Line2D([0], [0], color='black', linestyle='--', linewidth=2, alpha=0.5, label='Train (Dashed)'),
-            Line2D([0], [0], color='none', label=' ') # Spacer
+            Line2D(
+                [0],
+                [0],
+                color="black",
+                linestyle="-",
+                linewidth=2,
+                label="Test (Solid)",
+            ),
+            Line2D(
+                [0],
+                [0],
+                color="black",
+                linestyle="--",
+                linewidth=2,
+                alpha=0.5,
+                label="Train (Dashed)",
+            ),
+            Line2D([0], [0], color="none", label=" "),  # Spacer
         ]
     else:
         style_handles = []
-    
+
     # Combine
     final_handles = style_handles + list(by_label.values())
     final_labels = [h.get_label() for h in style_handles] + list(by_label.keys())
@@ -874,6 +972,7 @@ def plot_hyperparam_grid(
     plt.savefig(filepath, dpi=150, bbox_inches="tight")
     plt.close()
 
+
 # --- Helper functions to keep the code clean ---
 def _collect_data(histories, key):
     all_values = []
@@ -887,6 +986,7 @@ def _collect_data(histories, key):
             steps = curr_steps
     return all_values, steps
 
+
 def _aggregate_runs(all_values, steps):
     min_len = min(len(v) for v in all_values)
     truncated = np.stack([v[:min_len] for v in all_values])
@@ -894,7 +994,9 @@ def _aggregate_runs(all_values, steps):
     mean_steps = steps[:min_len]
     return mean_vals, mean_steps
 
+
 # -------------------------------------------
+
 
 def plot_stability_analysis(
     results: ResultsType,
@@ -917,10 +1019,20 @@ def plot_stability_analysis(
     if not pairs:
         return
 
-    # Extract stability metrics from task
+    # Extract stability metrics from task in explicit order
     metric_keys = task.keys
-    stability_metrics = [Metric.WeightNorm, Metric.GradNorm, Metric.UpdateNorm, Metric.GradLossRatio]
-    metrics = [k.metric for k in metric_keys if k.metric in stability_metrics]
+    stability_metrics = [
+        Metric.WeightNorm,
+        Metric.GradNorm,
+        Metric.UpdateNorm,
+        Metric.GradLossRatio,
+    ]
+
+    # Preserve explicit order: filter metric_keys by stability_metrics order
+    metrics = []
+    for metric in stability_metrics:
+        if any(k.metric == metric for k in metric_keys):
+            metrics.append(metric)
 
     if not metrics:
         return
@@ -931,17 +1043,24 @@ def plot_stability_analysis(
     ncols = len(metrics) * 2  # N metrics × 2 groups (Base, SAM)
 
     fig, axes = plt.subplots(
-        nrows, ncols,
+        nrows,
+        ncols,
         figsize=(5 * ncols, 5 * nrows),  # Wider subplots for better readability
         sharex=True,
         constrained_layout=True,
-        squeeze=False
+        squeeze=False,
     )
 
     # --- Color Setup (Hue=LR, Lightness=Rho) ---
     all_configs = list(results.keys())
     all_lrs = sorted(set(c.learning_rate for c in all_configs))
-    all_rhos = sorted(set(c.get(Hyperparam.Rho, 0.0) for c in all_configs if c.get(Hyperparam.Rho) is not None))
+    all_rhos = sorted(
+        set(
+            c.get(Hyperparam.Rho, 0.0)
+            for c in all_configs
+            if c.get(Hyperparam.Rho) is not None
+        )
+    )
 
     lr_cmap = plt.get_cmap("tab10")
 
@@ -973,20 +1092,22 @@ def plot_stability_analysis(
     for row_idx, base_opt in enumerate(base_opts):
         sam_opt = pairs[base_opt]
 
-        # Iterate: Base (first N cols), SAM (next N cols)
-        for group_idx, opt in enumerate([base_opt, sam_opt]):
-            col_offset = group_idx * len(metrics)
-            configs = [c for c in results.keys() if c.optimizer == opt]
+        # Iterate: Base and SAM interleaved for each metric
+        # Layout: [Base: Metric1, SAM: Metric1, Base: Metric2, SAM: Metric2, ...]
+        for m_idx, metric in enumerate(metrics):
+            col_offset = m_idx * 2  # Each metric takes 2 columns (Base + SAM)
 
-            for m_idx, metric in enumerate(metrics):
-                ax = axes[row_idx, col_offset + m_idx]
+            for group_idx, opt in enumerate([base_opt, sam_opt]):
+                ax = axes[row_idx, col_offset + group_idx]
+                configs = [c for c in results.keys() if c.optimizer == opt]
 
                 # Filter metric keys for this specific metric
                 m_keys = [k for k in task.keys if k.metric == metric]
 
                 # Stability metrics should not have splits
-                assert all(k.split is None for k in m_keys), \
+                assert all(k.split is None for k in m_keys), (
                     f"Stability metric {metric.name} should not have dataset splits"
+                )
 
                 # Configure axis with metric's strategy
                 strategy = metric.strategy
@@ -999,7 +1120,9 @@ def plot_stability_analysis(
                         continue
 
                     histories = _get_histories(results[config])
-                    color = get_color(config.learning_rate, config.get(Hyperparam.Rho, 0.0))
+                    color = get_color(
+                        config.learning_rate, config.get(Hyperparam.Rho, 0.0)
+                    )
 
                     for h in histories:
                         h_cpu = h.copy_cpu()
@@ -1026,13 +1149,16 @@ def plot_stability_analysis(
                 ax.set_title(f"{opt.name}: {metric.display_name}", fontsize=11, pad=10)
 
                 # Y-axis labels
-                col = col_offset + m_idx
+                col = col_offset + group_idx
                 if col == 0:
                     # Leftmost column: show optimizer name
                     ax.set_ylabel(f"{base_opt.name}", fontsize=10)
-                else:
-                    # Inner columns: show metric name
+                elif group_idx == 0:
+                    # First column of each metric pair: show metric name
                     ax.set_ylabel(f"{metric.display_name}", fontsize=9)
+                else:
+                    # Second column of each metric pair: no y-label (redundant)
+                    ax.set_ylabel("")
 
     # Set X labels for bottom row
     for ax in axes[-1, :]:
@@ -1043,21 +1169,29 @@ def plot_stability_analysis(
 
     # 1. Learning Rate (Hue)
     if all_lrs:
-        legend_elements.append(Patch(facecolor="none", edgecolor="none", label="LR (Hue):"))
+        legend_elements.append(
+            Patch(facecolor="none", edgecolor="none", label="LR (Hue):")
+        )
         for lr in all_lrs:
-            mid_rho = all_rhos[len(all_rhos)//2] if all_rhos else None
+            mid_rho = all_rhos[len(all_rhos) // 2] if all_rhos else None
             c = get_color(lr, mid_rho)
             lr_label = f"{lr:.0e}" if lr < 0.01 else f"{lr:.2g}"
-            legend_elements.append(Line2D([0], [0], color=c, lw=3, label=f"  {lr_label}"))
+            legend_elements.append(
+                Line2D([0], [0], color=c, lw=3, label=f"  {lr_label}")
+            )
 
     # 2. Rho (Lightness)
     if all_rhos:
         legend_elements.append(Patch(facecolor="none", edgecolor="none", label="  "))
-        legend_elements.append(Patch(facecolor="none", edgecolor="none", label="Rho (Value):"))
+        legend_elements.append(
+            Patch(facecolor="none", edgecolor="none", label="Rho (Value):")
+        )
         sample_lr = all_lrs[0] if all_lrs else 0.01
 
         # Show Min, Mid, Max rho
-        indices = [0, len(all_rhos)//2, -1] if len(all_rhos) > 2 else range(len(all_rhos))
+        indices = (
+            [0, len(all_rhos) // 2, -1] if len(all_rhos) > 2 else range(len(all_rhos))
+        )
         for i in sorted(list(set(indices))):
             rho = all_rhos[i]
             c = get_color(sample_lr, rho)
@@ -1071,7 +1205,7 @@ def plot_stability_analysis(
             loc="outside upper center",
             ncol=min(len(legend_elements), 8),
             fontsize=9,
-            frameon=True
+            frameon=True,
         )
 
     plt.savefig(filepath, dpi=150)
@@ -1117,7 +1251,7 @@ def plot_sam_comparison(
         nrows,
         ncols,
         figsize=(8 * ncols, 5 * nrows),
-        sharey='row',
+        sharey="row",
         constrained_layout=True,
         squeeze=False,
     )
@@ -1297,15 +1431,31 @@ def plot_sam_comparison(
 
     # Add legend showing learning rate colors and rho lightness
     from matplotlib.lines import Line2D
+
     legend_elements = []
 
     # Add split style indicators if needed
     if show_split_styles:
         legend_elements.append(
-            Line2D([0], [0], color='black', linestyle='-', linewidth=2, label='Test (Solid)')
+            Line2D(
+                [0],
+                [0],
+                color="black",
+                linestyle="-",
+                linewidth=2,
+                label="Test (Solid)",
+            )
         )
         legend_elements.append(
-            Line2D([0], [0], color='black', linestyle='--', linewidth=2, alpha=0.5, label='Train (Dashed)')
+            Line2D(
+                [0],
+                [0],
+                color="black",
+                linestyle="--",
+                linewidth=2,
+                alpha=0.5,
+                label="Train (Dashed)",
+            )
         )
         legend_elements.append(Patch(facecolor="none", edgecolor="none", label=""))
 
@@ -1582,4 +1732,3 @@ def save_results_npz(
                 data[npz_key] = values
 
     np.savez(filepath, **data)  # type: ignore[call-arg]
-

@@ -104,7 +104,7 @@ def default_metrics(w_star, loss_fn, **kwargs):
                 Metric.WeightNorm: get_weight_norm,
                 Metric.GradNorm: get_weight_norm,  # Function not used, optimizer provides grad_norm
                 Metric.UpdateNorm: compute_update_norm,  # Function not used, optimizer provides update_norm
-                # Metric.GradLossRatio: loss_fn,  # Function not used, computed from grad_norm/loss - DISABLED
+                Metric.GradLossRatio: loss_fn,  # Function not used, computed from grad_norm/loss - DISABLED
             },
             w_star=w_star,
         )
