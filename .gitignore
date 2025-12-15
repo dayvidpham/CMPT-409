@@ -1,8 +1,12 @@
+# artifacts
+experiments/
+nohup.out
+nohup*
+
 # NixOS, direnv/
 .direnv/
 
 # Python
 __pycache__/
-experiments
 .venv/
 venv/
