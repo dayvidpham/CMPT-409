@@ -10,12 +10,14 @@ from engine import (
     split_train_test,
     make_soudry_dataset,
     get_empirical_max_margin,
-    exponential_loss,
     get_error_rate,
     get_angle,
     get_direction_distance,
     expand_sweep_grid,
 )
+from engine.losses import LogisticLoss
+from engine.metrics import get_weight_norm, compute_update_norm
+from engine.optimizers import make_stateful_optimizer_factory
 from engine.optimizers.manual import (
     ManualAdam,
     ManualAdaGrad,
@@ -42,19 +44,26 @@ def main():
     datasets = split_train_test(X, y, test_size=0.2, random_state=42)
 
     # Model factory
-    # Note: Ensure TwoLayerModel is purely linear (Sequential(Linear, Linear)) 
+    # Note: Ensure TwoLayerModel is purely linear (Sequential(Linear, Linear))
     # to match the manual optimizer's gradient derivation.
     def model_factory():
         return TwoLayerModel(X.shape[1], 100, device=device)
+
+    # === Loss function (configurable) ===
+    loss_fn = LogisticLoss()
 
     # Metrics factory
     def metrics_factory(model):
         return MetricsCollector(
             metric_fns={
-                Metric.Loss: exponential_loss,
+                Metric.Loss: loss_fn,
                 Metric.Error: get_error_rate,
                 Metric.Angle: get_angle,
                 Metric.Distance: get_direction_distance,
+                Metric.WeightNorm: get_weight_norm,
+                Metric.GradNorm: get_weight_norm,  # Function not used, optimizer provides grad_norm
+                Metric.UpdateNorm: compute_update_norm,  # Function not used, optimizer provides update_norm
+                Metric.GradLossRatio: loss_fn,  # Function not used, computed from grad_norm/loss
             },
             w_star=w_star
         )
@@ -62,15 +71,15 @@ def main():
     # Optimizer factories
     # Using the fused manual implementations for ~2x speedup on small models
     optimizer_factories = {
-        Optimizer.Adam: ManualAdam,
-        Optimizer.AdaGrad: ManualAdaGrad,
-        Optimizer.SAM_Adam: ManualSAM_Adam,
-        Optimizer.SAM_AdaGrad: ManualSAM_AdaGrad,
+        Optimizer.Adam: make_stateful_optimizer_factory(ManualAdam, loss=loss_fn),
+        Optimizer.AdaGrad: make_stateful_optimizer_factory(ManualAdaGrad, loss=loss_fn),
+        Optimizer.SAM_Adam: make_stateful_optimizer_factory(ManualSAM_Adam, loss=loss_fn),
+        Optimizer.SAM_AdaGrad: make_stateful_optimizer_factory(ManualSAM_AdaGrad, loss=loss_fn),
     }
 
     # Hyperparameter sweeps
-    learning_rates = [1e-4, 1e-3, 1e-2, 1e-1, 1e0]
-    rho_values = [0.05]
+    learning_rates = [1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2]
+    rho_values = [1e-2, 1e-1, 1e0, 1e1, 1e2, 1e3]
 
     sweeps = {
         Optimizer.Adam: {

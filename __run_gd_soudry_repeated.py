@@ -8,17 +8,26 @@ from engine import (
     DatasetSplit,
     Metric,
     Optimizer,
+    Hyperparam,
     MetricsCollector,
     split_train_test,
     make_soudry_dataset,
     get_empirical_max_margin,
-    exponential_loss,
     get_error_rate,
     get_angle,
     get_direction_distance,
+    expand_sweep_grid,
 )
-from engine.optimizers import step_gd, step_sam_stable, step_ngd_stable, step_sam_ngd_stable
-from engine.optimizers.base import make_optimizer
+from engine.metrics import get_weight_norm, compute_update_norm
+from engine.optimizers import (
+    step_gd,
+    step_sam_stable,
+    step_loss_ngd,
+    step_vec_ngd,
+    step_sam_loss_ngd,
+    step_sam_vec_ngd,
+    make_optimizer_factory,
+)
 from engine.plotting import plot_all
 
 # Configure PyTorch to use all CPU cores
@@ -49,18 +58,53 @@ def main():
     # Dataset params
     N, D = 200, 5000
     total_iters = 100_000
-    
-    learning_rates = [1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1]
-    
-    optimizer_keys = [
-        Optimizer.GD,
-        Optimizer.SAM,
-        Optimizer.NGD,
-        Optimizer.SAM_NGD
-    ]
 
-    # Container: results[lr][opt] = [History_Run1, History_Run2, ...]
-    aggregated_results = {lr: {opt: [] for opt in optimizer_keys} for lr in learning_rates}
+    learning_rates = [1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2]
+    rho_values = [1e-2, 1e-1, 1e0, 1e1, 1e2, 1e3]
+
+    # Define which optimizers to use (using same loss function)
+    from engine.losses import LogisticLoss
+    loss_fn = LogisticLoss()
+
+    optimizer_factories = {
+        Optimizer.GD: make_optimizer_factory(step_gd, loss=loss_fn),
+        Optimizer.SAM: make_optimizer_factory(step_sam_stable, loss=loss_fn),
+        Optimizer.LossNGD: make_optimizer_factory(step_loss_ngd, loss=loss_fn),
+        Optimizer.VecNGD: make_optimizer_factory(step_vec_ngd, loss=loss_fn),
+        Optimizer.SAM_LossNGD: make_optimizer_factory(step_sam_loss_ngd, loss=loss_fn),
+        Optimizer.SAM_VecNGD: make_optimizer_factory(step_sam_vec_ngd, loss=loss_fn),
+    }
+
+    # === Hyperparameter sweeps ===
+    sweeps = {
+        Optimizer.GD: {
+            Hyperparam.LearningRate: learning_rates,
+        },
+        Optimizer.SAM: {
+            Hyperparam.LearningRate: learning_rates,
+            Hyperparam.Rho: rho_values,
+        },
+        Optimizer.LossNGD: {
+            Hyperparam.LearningRate: learning_rates,
+        },
+        Optimizer.VecNGD: {
+            Hyperparam.LearningRate: learning_rates,
+        },
+        Optimizer.SAM_LossNGD: {
+            Hyperparam.LearningRate: learning_rates,
+            Hyperparam.Rho: rho_values,
+        },
+        Optimizer.SAM_VecNGD: {
+            Hyperparam.LearningRate: learning_rates,
+            Hyperparam.Rho: rho_values,
+        },
+    }
+
+    # Expand to concrete configurations
+    optimizer_configs = expand_sweep_grid(optimizer_factories, sweeps)
+
+    # Container: results[config] = [History_Run1, History_Run2, ...]
+    aggregated_results = {config: [] for config in optimizer_configs}
 
     # -------------------------------------------------------------------------
     # Training Loop (Multiple Seeds)
@@ -93,39 +137,32 @@ def main():
         def metrics_factory(model):
             return MetricsCollector(
                 metric_fns={
-                    Metric.Loss: exponential_loss,
+                    Metric.Loss: loss_fn,
                     Metric.Error: get_error_rate,
                     Metric.Angle: get_angle,
                     Metric.Distance: get_direction_distance,
+                    Metric.WeightNorm: get_weight_norm,
+                    Metric.GradNorm: get_weight_norm,  # Function not used, optimizer provides grad_norm
+                    Metric.UpdateNorm: compute_update_norm,  # Function not used, optimizer provides update_norm
+                    Metric.GradLossRatio: loss_fn,  # Function not used, computed from grad_norm/loss
                 },
                 w_star=w_star
             )
 
-        # 4. Define Optimizers
-        optimizers_map = {
-            Optimizer.GD: make_optimizer(step_gd),
-            Optimizer.SAM: make_optimizer(step_sam_stable),
-            Optimizer.NGD: make_optimizer(step_ngd_stable),
-            Optimizer.SAM_NGD: make_optimizer(step_sam_ngd_stable),
-        }
-        optimizers_map = {k: v for k, v in optimizers_map.items() if k in optimizer_keys}
-
-        # 5. Run Training
+        # 4. Run Training
         seed_results = run_training(
             datasets=datasets,
             model_factory=model_factory,
-            optimizers=optimizers_map,
-            learning_rates=learning_rates,
+            optimizers=optimizer_configs,
             metrics_collector_factory=metrics_factory,
             train_split=DatasetSplit.Train,
             total_iters=total_iters,
             debug=True
         )
 
-        # 6. Collect Results
-        for lr in learning_rates:
-            for opt in optimizer_keys:
-                aggregated_results[lr][opt].append(seed_results[lr][opt])
+        # 5. Collect Results
+        for config in optimizer_configs:
+            aggregated_results[config].append(seed_results[config])
 
     # -------------------------------------------------------------------------
     # Plotting
@@ -133,12 +170,10 @@ def main():
     print("\nGenerating Aggregated Plots...")
     plot_all(
         aggregated_results,
-        learning_rates,
-        optimizer_keys,
         experiment_name="soudry_aggregated",
-        save_combined=True,
-        save_separate=True,
-        save_aggregated=True
+        save_separate=False,
+        save_aggregated=False,
+        save_combined=False,
     )
     print("Done!")
 

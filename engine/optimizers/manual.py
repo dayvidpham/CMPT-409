@@ -174,7 +174,6 @@ class ManualTwolayerAdam(OptimizerState):
 
             # Collect metrics
             gnorm = torch.sqrt(W1_grad.norm() ** 2 + W2_grad.norm() ** 2)  # type: ignore[arg-type]
-            self.collect_metrics(gnorm, loss)
 
             # Adam Update
             beta1, beta2 = self.betas
@@ -190,13 +189,19 @@ class ManualTwolayerAdam(OptimizerState):
             s["m1"].mul_(beta1).add_(W1_grad, alpha=1 - beta1)
             s["v1"].mul_(beta2).addcmul_(W1_grad, W1_grad, value=1 - beta2)
             denom1 = (s["v1"].sqrt() / bias_corr2_sqrt).add_(self.eps)
-            W1.addcdiv_(s["m1"], denom1, value=-step_size)
+            update1 = s["m1"] / denom1
+            W1.add_(update1, alpha=-step_size)
 
             # W2
             s["m2"].mul_(beta1).add_(W2_grad, alpha=1 - beta1)
             s["v2"].mul_(beta2).addcmul_(W2_grad, W2_grad, value=1 - beta2)
             denom2 = (s["v2"].sqrt() / bias_corr2_sqrt).add_(self.eps)
-            W2.addcdiv_(s["m2"], denom2, value=-step_size)
+            update2 = s["m2"] / denom2
+            W2.add_(update2, alpha=-step_size)
+
+            # For Adam: update_direction = m / (sqrt(v) + eps), so update_norm = ||m / (sqrt(v) + eps)||
+            update_norm = torch.sqrt(update1.norm() ** 2 + update2.norm() ** 2)  # type: ignore[arg-type]
+            self.collect_metrics(gnorm, update_norm, loss)
 
 
 class ManualTwolayerAdaGrad(OptimizerState):
@@ -241,18 +246,23 @@ class ManualTwolayerAdaGrad(OptimizerState):
 
             # Collect metrics
             gnorm = torch.sqrt(W1_grad.norm() ** 2 + W2_grad.norm() ** 2)  # type: ignore[arg-type]
-            self.collect_metrics(gnorm, loss)
 
             # Adagrad Update
             # W1
             s["sum_sq1"].addcmul_(W1_grad, W1_grad)
             std1 = s["sum_sq1"].sqrt().add_(self.eps)
-            W1.addcdiv_(W1_grad, std1, value=-lr)
+            update1 = W1_grad / std1
+            W1.add_(update1, alpha=-lr)
 
             # W2
             s["sum_sq2"].addcmul_(W2_grad, W2_grad)
             std2 = s["sum_sq2"].sqrt().add_(self.eps)
-            W2.addcdiv_(W2_grad, std2, value=-lr)
+            update2 = W2_grad / std2
+            W2.add_(update2, alpha=-lr)
+
+            # For AdaGrad: update_direction = grad / (sqrt(sum_sq) + eps)
+            update_norm = torch.sqrt(update1.norm() ** 2 + update2.norm() ** 2)  # type: ignore[arg-type]
+            self.collect_metrics(gnorm, update_norm, loss)
 
 
 class ManualTwolayerSAM_Adam(OptimizerState):
@@ -306,7 +316,6 @@ class ManualTwolayerSAM_Adam(OptimizerState):
             # 2. Compute SAM Perturbation
             # Global norm over all params
             gnorm = torch.sqrt(g1.norm() ** 2 + g2.norm() ** 2)  # type: ignore[arg-type]
-            self.collect_metrics(gnorm, loss)
 
             if gnorm > GRAD_TOL:
                 scale = self.rho / gnorm
@@ -330,13 +339,23 @@ class ManualTwolayerSAM_Adam(OptimizerState):
                 s["m1"].mul_(beta1).add_(g1_adv, alpha=1 - beta1)
                 s["v1"].mul_(beta2).addcmul_(g1_adv, g1_adv, value=1 - beta2)
                 denom1 = (s["v1"].sqrt() / bias_corr2_sqrt).add_(self.eps)
-                W1.addcdiv_(s["m1"], denom1, value=-step_size)
+                update1 = s["m1"] / denom1
+                W1.add_(update1, alpha=-step_size)
 
                 # W2
                 s["m2"].mul_(beta1).add_(g2_adv, alpha=1 - beta1)
                 s["v2"].mul_(beta2).addcmul_(g2_adv, g2_adv, value=1 - beta2)
                 denom2 = (s["v2"].sqrt() / bias_corr2_sqrt).add_(self.eps)
-                W2.addcdiv_(s["m2"], denom2, value=-step_size)
+                update2 = s["m2"] / denom2
+                W2.add_(update2, alpha=-step_size)
+
+                # For SAM_Adam: update_direction = m_adv / (sqrt(v_adv) + eps)
+                update_norm = torch.sqrt(update1.norm() ** 2 + update2.norm() ** 2)  # type: ignore[arg-type]
+                self.collect_metrics(gnorm, update_norm, loss)
+            else:
+                # No update if gradient is too small
+                update_norm = torch.zeros_like(gnorm)
+                self.collect_metrics(gnorm, update_norm, loss)
 
 
 class ManualTwolayerSAM_AdaGrad(OptimizerState):
@@ -383,7 +402,6 @@ class ManualTwolayerSAM_AdaGrad(OptimizerState):
 
             # 2. SAM Perturbation
             gnorm = torch.sqrt(g1.norm() ** 2 + g2.norm() ** 2)  # type: ignore[arg-type]
-            self.collect_metrics(gnorm, loss)
 
             if gnorm > GRAD_TOL:
                 scale = self.rho / gnorm
@@ -398,12 +416,22 @@ class ManualTwolayerSAM_AdaGrad(OptimizerState):
                 # W1
                 s["sum_sq1"].addcmul_(g1_adv, g1_adv)
                 std1 = s["sum_sq1"].sqrt().add_(self.eps)
-                W1.addcdiv_(g1_adv, std1, value=-lr)
+                update1 = g1_adv / std1
+                W1.add_(update1, alpha=-lr)
 
                 # W2
                 s["sum_sq2"].addcmul_(g2_adv, g2_adv)
                 std2 = s["sum_sq2"].sqrt().add_(self.eps)
-                W2.addcdiv_(g2_adv, std2, value=-lr)
+                update2 = g2_adv / std2
+                W2.add_(update2, alpha=-lr)
+
+                # For SAM_AdaGrad: update_direction = grad_adv / (sqrt(sum_sq) + eps)
+                update_norm = torch.sqrt(update1.norm() ** 2 + update2.norm() ** 2)  # type: ignore[arg-type]
+                self.collect_metrics(gnorm, update_norm, loss)
+            else:
+                # No update if gradient is too small
+                update_norm = torch.zeros_like(gnorm)
+                self.collect_metrics(gnorm, update_norm, loss)
 
 
 class ManualTwolayerGD(OptimizerState):
@@ -435,7 +463,9 @@ class ManualTwolayerGD(OptimizerState):
 
             # Collect metrics
             gnorm = torch.sqrt(g1.norm() ** 2 + g2.norm() ** 2)  # type: ignore[arg-type]
-            self.collect_metrics(gnorm, loss)
+            # For GD: update_direction = gradient, so update_norm = grad_norm
+            update_norm = gnorm
+            self.collect_metrics(gnorm, update_norm, loss)
 
             # 2. Update
             W1.add_(g1, alpha=-lr)
@@ -477,7 +507,9 @@ class ManualTwolayerLossNGD(OptimizerState):
             # 2. Compute Global Norm (for checking if gradient is non-zero)
             gnorm_sq = g1.norm() ** 2 + g2.norm() ** 2
             gnorm = torch.sqrt(gnorm_sq)  # type: ignore[arg-type]
-            self.collect_metrics(gnorm, loss)
+            # For LossNGD: update_direction = gradient / loss, so update_norm = ||gradient|| / loss
+            update_norm = gnorm / loss if gnorm > GRAD_TOL else torch.zeros_like(gnorm)
+            self.collect_metrics(gnorm, update_norm, loss)
 
             # 3. Loss-Normalized GD Update
             if gnorm > GRAD_TOL:
@@ -519,7 +551,9 @@ class ManualTwolayerVecNGD(OptimizerState):
 
             # 2. Compute Global Norm
             gnorm = torch.sqrt(g1.norm() ** 2 + g2.norm() ** 2)  # type: ignore[arg-type]
-            self.collect_metrics(gnorm, loss)
+            # For VecNGD: update_direction = gradient / ||gradient||, so update_norm = 1
+            update_norm = torch.ones_like(gnorm) if gnorm > GRAD_TOL else torch.zeros_like(gnorm)
+            self.collect_metrics(gnorm, update_norm, loss)
 
             # 3. Vector-Normalized GD Update
             if gnorm > GRAD_TOL:
@@ -564,7 +598,6 @@ class ManualTwolayerSAM(OptimizerState):
 
             # 2. SAM Perturbation (Global Norm)
             gnorm = torch.sqrt(g1.norm() ** 2 + g2.norm() ** 2)  # type: ignore[arg-type]
-            self.collect_metrics(gnorm, loss)
 
             if gnorm > GRAD_TOL:
                 scale = self.rho / gnorm
@@ -576,9 +609,17 @@ class ManualTwolayerSAM(OptimizerState):
                 # 3. Compute Gradients at perturbed W_adv
                 g1_adv, g2_adv = _compute_grads(W1_adv, W2_adv, X, y, loss_fn=self.loss)
 
+                # For SAM: update_direction = grad_adv, so update_norm = ||grad_adv||
+                update_norm = torch.sqrt(g1_adv.norm() ** 2 + g2_adv.norm() ** 2)  # type: ignore[arg-type]
+                self.collect_metrics(gnorm, update_norm, loss)
+
                 # 4. Standard GD Update on ORIGINAL weights using ADV gradients
                 W1.add_(g1_adv, alpha=-lr)
                 W2.add_(g2_adv, alpha=-lr)
+            else:
+                # No update if gradient is too small
+                update_norm = torch.zeros_like(gnorm)
+                self.collect_metrics(gnorm, update_norm, loss)
 
 
 class ManualTwolayerSAM_LossNGD(OptimizerState):
@@ -618,7 +659,6 @@ class ManualTwolayerSAM_LossNGD(OptimizerState):
 
             # 2. SAM Perturbation (Global Norm)
             gnorm = torch.sqrt(g1.norm() ** 2 + g2.norm() ** 2)  # type: ignore[arg-type]
-            self.collect_metrics(gnorm, loss)
 
             if gnorm > GRAD_TOL:
                 scale = self.rho / gnorm
@@ -636,10 +676,22 @@ class ManualTwolayerSAM_LossNGD(OptimizerState):
                 gnorm_adv = torch.sqrt(g1_adv.norm() ** 2 + g2_adv.norm() ** 2)  # type: ignore[arg-type]
 
                 if gnorm_adv > GRAD_TOL:
+                    # For SAM_LossNGD: update_direction = grad_adv / loss_adv
+                    update_norm = gnorm_adv / loss_adv
+                    self.collect_metrics(gnorm, update_norm, loss)
+
                     # Normalize by loss instead of gradient norm
                     update_scale = -lr / loss_adv
                     W1.add_(g1_adv, alpha=update_scale)  # type: ignore[arg-type]
                     W2.add_(g2_adv, alpha=update_scale)  # type: ignore[arg-type]
+                else:
+                    # No update if adversarial gradient is too small
+                    update_norm = torch.zeros_like(gnorm)
+                    self.collect_metrics(gnorm, update_norm, loss)
+            else:
+                # No update if initial gradient is too small
+                update_norm = torch.zeros_like(gnorm)
+                self.collect_metrics(gnorm, update_norm, loss)
 
 
 class ManualTwolayerSAM_VecNGD(OptimizerState):
@@ -679,7 +731,6 @@ class ManualTwolayerSAM_VecNGD(OptimizerState):
 
             # 2. SAM Perturbation (Global Norm)
             gnorm = torch.sqrt(g1.norm() ** 2 + g2.norm() ** 2)  # type: ignore[arg-type]
-            self.collect_metrics(gnorm, loss)
 
             if gnorm > GRAD_TOL:
                 scale = self.rho / gnorm
@@ -697,7 +748,19 @@ class ManualTwolayerSAM_VecNGD(OptimizerState):
                 gnorm_adv = torch.sqrt(g1_adv.norm() ** 2 + g2_adv.norm() ** 2)  # type: ignore[arg-type]
 
                 if gnorm_adv > GRAD_TOL:
+                    # For SAM_VecNGD: update_direction = grad_adv / ||grad_adv||, so update_norm = 1
+                    update_norm = torch.ones_like(gnorm)
+                    self.collect_metrics(gnorm, update_norm, loss)
+
                     # Normalize by gradient norm instead of loss
                     update_scale = -lr / gnorm_adv
                     W1.add_(g1_adv, alpha=update_scale)  # type: ignore[arg-type]
                     W2.add_(g2_adv, alpha=update_scale)  # type: ignore[arg-type]
+                else:
+                    # No update if adversarial gradient is too small
+                    update_norm = torch.zeros_like(gnorm)
+                    self.collect_metrics(gnorm, update_norm, loss)
+            else:
+                # No update if initial gradient is too small
+                update_norm = torch.zeros_like(gnorm)
+                self.collect_metrics(gnorm, update_norm, loss)

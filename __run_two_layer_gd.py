@@ -74,6 +74,7 @@ def main():
                 Metric.Angle: get_angle,
                 Metric.Distance: get_direction_distance,
                 Metric.WeightNorm: get_weight_norm,
+                Metric.GradNorm: get_weight_norm,  # Function not used, optimizer provides grad_norm
                 Metric.UpdateNorm: compute_update_norm,  # Function not used, optimizer provides grad_norm
                 Metric.GradLossRatio: loss_fn,  # Function not used, computed from grad_norm/loss
             },

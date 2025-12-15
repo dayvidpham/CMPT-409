@@ -40,7 +40,7 @@ def main():
     print(f"Using device: {device}")
 
     # Generate dataset (Torch only now)
-    X, y, v_pop = make_soudry_dataset(n=200, d=5000, device=device)
+    X, y, v_pop = make_soudry_dataset(n=200, d=5000, margin=1.0, device=device)
     w_star = get_empirical_max_margin(X, y)
 
     print("Angle(v, w*):", get_angle(v_pop, w_star))
@@ -67,7 +67,8 @@ def main():
                 Metric.Angle: get_angle,
                 Metric.Distance: get_direction_distance,
                 Metric.WeightNorm: get_weight_norm,
-                Metric.UpdateNorm: compute_update_norm,
+                Metric.GradNorm: get_weight_norm,  # Function not used, optimizer provides grad_norm
+                Metric.UpdateNorm: compute_update_norm,  # Function not used, optimizer provides update_norm
                 Metric.GradLossRatio: loss_fn,  # Function not used, computed from grad_norm/loss
             },
             w_star=w_star,
@@ -82,8 +83,8 @@ def main():
     }
 
     # === Hyperparameter sweeps ===
-    learning_rates = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0]
-    rho_values = [0.05, 0.1, 0.5, 1.0, 5.0, 15.0, 50.0]
+    learning_rates = [1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2]
+    rho_values = [1e-2, 1e-1, 1e0, 1e1, 1e2, 1e3]
 
     sweeps = {
         Optimizer.Adam: {

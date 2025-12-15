@@ -200,8 +200,8 @@ class MetricsCollector:
         """
         self.metric_fns = metric_fns
         self.w_star = w_star
-        self.w_prev = None  # Track previous weights for UpdateNorm stability metric
         self.grad_norm: Optional[torch.Tensor] = None  # Gradient norm set by optimizer
+        self.update_norm: Optional[torch.Tensor] = None  # Update norm set by optimizer
         self.train_loss: Optional[torch.Tensor] = None  # Training loss set by optimizer
 
     def compute_all(
@@ -269,14 +269,22 @@ class MetricsCollector:
                 # Keep as tensors to avoid CPU synchronization
                 if metric == Metric.WeightNorm:
                     value = get_weight_norm(model)
-                elif metric == Metric.UpdateNorm:
+                elif metric == Metric.GradNorm:
                     if self.grad_norm is None:
                         raise ValueError(
-                            "UpdateNorm metric requires grad_norm to be set by the optimizer. "
+                            "GradNorm metric requires grad_norm to be set by the optimizer. "
                             "Ensure the optimizer has a reference to this MetricsCollector and sets grad_norm during step()."
                         )
                     # Use the gradient norm provided by the optimizer (unscaled by learning rate)
                     value = self.grad_norm
+                elif metric == Metric.UpdateNorm:
+                    if self.update_norm is None:
+                        raise ValueError(
+                            "UpdateNorm metric requires update_norm to be set by the optimizer. "
+                            "Ensure the optimizer has a reference to this MetricsCollector and sets update_norm during step()."
+                        )
+                    # Use the update norm provided by the optimizer (unscaled by learning rate)
+                    value = self.update_norm
                 elif metric == Metric.GradLossRatio:
                     # Compute ratio: grad_norm / loss
                     # Both should have been set by the optimizer
@@ -301,9 +309,10 @@ class MetricsCollector:
                 key = MetricKey(metric=metric, split=None)
                 results[key] = value.detach()
 
-        # Reset grad_norm and train_loss after all metrics computed
+        # Reset grad_norm, update_norm, and train_loss after all metrics computed
         # (They will be set again by optimizer on next step)
         self.grad_norm = None
+        self.update_norm = None
         self.train_loss = None
 
         return results

@@ -919,7 +919,7 @@ def plot_stability_analysis(
 
     # Extract stability metrics from task
     metric_keys = task.keys
-    stability_metrics = [Metric.WeightNorm, Metric.UpdateNorm, Metric.GradLossRatio]
+    stability_metrics = [Metric.WeightNorm, Metric.GradNorm, Metric.UpdateNorm, Metric.GradLossRatio]
     metrics = [k.metric for k in metric_keys if k.metric in stability_metrics]
 
     if not metrics:
@@ -928,7 +928,7 @@ def plot_stability_analysis(
     # Sort base optimizers by name
     base_opts = sorted(pairs.keys(), key=lambda x: x.name)
     nrows = len(pairs)
-    ncols = 6  # 3 metrics × 2 groups (Base, SAM)
+    ncols = len(metrics) * 2  # N metrics × 2 groups (Base, SAM)
 
     fig, axes = plt.subplots(
         nrows, ncols,
@@ -973,9 +973,9 @@ def plot_stability_analysis(
     for row_idx, base_opt in enumerate(base_opts):
         sam_opt = pairs[base_opt]
 
-        # Iterate: Base (first 3 cols), SAM (next 3 cols)
+        # Iterate: Base (first N cols), SAM (next N cols)
         for group_idx, opt in enumerate([base_opt, sam_opt]):
-            col_offset = group_idx * 3
+            col_offset = group_idx * len(metrics)
             configs = [c for c in results.keys() if c.optimizer == opt]
 
             for m_idx, metric in enumerate(metrics):

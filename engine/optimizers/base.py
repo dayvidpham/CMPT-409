@@ -27,16 +27,18 @@ class OptimizerState(ABC):
 
         self.metrics_collector: Optional[MetricsCollector] = metrics_collector
 
-    def collect_metrics(self, grad_norm: torch.Tensor, train_loss: torch.Tensor):
+    def collect_metrics(self, grad_norm: torch.Tensor, update_norm: torch.Tensor, train_loss: torch.Tensor):
         """
-        Store gradient norm and training loss in the metrics collector.
+        Store gradient norm, update norm, and training loss in the metrics collector.
 
         Args:
             grad_norm: Norm of the gradient (unscaled by learning rate)
+            update_norm: Norm of the update direction (unscaled by learning rate)
             train_loss: Training loss value
         """
         if self.metrics_collector is not None:
             self.metrics_collector.grad_norm = grad_norm
+            self.metrics_collector.update_norm = update_norm
             self.metrics_collector.train_loss = train_loss
 
     @abstractmethod
@@ -120,10 +122,30 @@ class StatefulOptimizer(OptimizerState):
                     grad_norm_sq += param.grad.norm() ** 2
             grad_norm = grad_norm_sq.sqrt()
 
-            # Collect metrics
-            self.collect_metrics(grad_norm, loss.detach())
+            # Save current weights to compute update norm
+            params_before = []
+            for param in model.parameters():
+                if param.grad is not None:
+                    params_before.append(param.detach().clone())
 
         self.optimizer.step()
+
+        # Compute update norm after step
+        with torch.no_grad():
+            update_norm_sq = torch.tensor(0.0, device=model.device)
+            param_idx = 0
+            for param in model.parameters():
+                if param.grad is not None:
+                    # update = (param_before - param_after) / lr
+                    # update_norm = ||(param_before - param_after)|| / lr
+                    delta = params_before[param_idx] - param
+                    update_norm_sq += delta.norm() ** 2
+                    param_idx += 1
+            # Divide by lr to get unscaled update norm
+            update_norm = update_norm_sq.sqrt() / lr if lr > 0 else torch.zeros_like(grad_norm)
+
+            # Collect metrics
+            self.collect_metrics(grad_norm, update_norm, loss.detach())
 
     def reset(self):
         self.optimizer = None
@@ -178,9 +200,6 @@ class SAMOptimizer(OptimizerState):
                 grad_norm_sq += grad.norm() ** 2
             global_norm = grad_norm_sq.sqrt()
 
-            # Collect metrics from first forward pass
-            self.collect_metrics(global_norm, loss.detach())
-
             # Save original parameters
             original_params = [p.clone() for p in params_with_grad]
 
@@ -196,6 +215,20 @@ class SAMOptimizer(OptimizerState):
         scores_adv = model.forward(X)
         loss_adv = self.loss_fn(scores_adv, y)
         loss_adv.backward()
+
+        # Compute adversarial gradient norm (for update_norm)
+        with torch.no_grad():
+            adv_grad_norm_sq = torch.tensor(0.0, device=model.device)
+            for p in params_with_grad:
+                if p.grad is not None:
+                    adv_grad_norm_sq += p.grad.norm() ** 2
+            adv_grad_norm = adv_grad_norm_sq.sqrt()
+
+            # For SAM: update_direction = grad_adv, so update_norm = ||grad_adv||
+            update_norm = adv_grad_norm if global_norm > GRAD_TOL else torch.zeros_like(global_norm)
+
+            # Collect metrics (using initial gradient norm and loss, but adversarial update norm)
+            self.collect_metrics(global_norm, update_norm, loss.detach())
 
         # 6. Restore original parameters
         with torch.no_grad():
