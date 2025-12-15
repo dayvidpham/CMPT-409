@@ -49,6 +49,7 @@ from engine.optimizers.manual import (
 # General
 # ============================================================================
 
+
 def default_dataset_generation(
     n: int = 200,
     d: int = 5000,
@@ -92,6 +93,7 @@ def default_metrics(w_star, loss_fn, **kwargs):
     Returns:
         Metrics factory function
     """
+
     def metrics_factory(model):
         return MetricsCollector(
             metric_fns={
@@ -102,7 +104,7 @@ def default_metrics(w_star, loss_fn, **kwargs):
                 Metric.WeightNorm: get_weight_norm,
                 Metric.GradNorm: get_weight_norm,  # Function not used, optimizer provides grad_norm
                 Metric.UpdateNorm: compute_update_norm,  # Function not used, optimizer provides update_norm
-                Metric.GradLossRatio: loss_fn,  # Function not used, computed from grad_norm/loss
+                # Metric.GradLossRatio: loss_fn,  # Function not used, computed from grad_norm/loss - DISABLED
             },
             w_star=w_star,
         )
@@ -113,6 +115,7 @@ def default_metrics(w_star, loss_fn, **kwargs):
 # ============================================================================
 # Model type
 # ============================================================================
+
 
 def default_model_linear(input_dim: int, device: str = "cuda", **kwargs):
     """Returns default linear model factory.
@@ -125,13 +128,16 @@ def default_model_linear(input_dim: int, device: str = "cuda", **kwargs):
     Returns:
         Model factory function
     """
+
     def model_factory():
         return LinearModel(input_dim, device=device)
 
     return model_factory
 
 
-def default_model_twolayer(input_dim: int, hidden_dim: int = 50, device: str = "cuda", **kwargs):
+def default_model_twolayer(
+    input_dim: int, hidden_dim: int = 50, device: str = "cuda", **kwargs
+):
     """Returns default two-layer model factory.
 
     Args:
@@ -143,6 +149,7 @@ def default_model_twolayer(input_dim: int, hidden_dim: int = 50, device: str = "
     Returns:
         Model factory function
     """
+
     def model_factory():
         return TwoLayerModel(input_dim, hidden_dim, device=device)
 
@@ -152,6 +159,7 @@ def default_model_twolayer(input_dim: int, hidden_dim: int = 50, device: str = "
 # ============================================================================
 # Hyperparams
 # ============================================================================
+
 
 def default_hyperparams_lr(**kwargs):
     """Returns default learning rate values for hyperparameter sweeps.
@@ -181,6 +189,7 @@ def default_hyperparams_rho(**kwargs):
 # Optimizers
 # ============================================================================
 
+
 def default_optimizer_family_gd(model, loss_fn, use_manual: bool = False, **kwargs):
     """Returns default GD optimizer family configurations.
 
@@ -202,11 +211,19 @@ def default_optimizer_family_gd(model, loss_fn, use_manual: bool = False, **kwar
         # Manual implementations for TwoLayer models
         optimizer_factories = {
             Optimizer.GD: make_stateful_optimizer_factory(ManualGD, loss=loss_fn),
-            Optimizer.LossNGD: make_stateful_optimizer_factory(ManualLossNGD, loss=loss_fn),
-            Optimizer.VecNGD: make_stateful_optimizer_factory(ManualVecNGD, loss=loss_fn),
+            Optimizer.LossNGD: make_stateful_optimizer_factory(
+                ManualLossNGD, loss=loss_fn
+            ),
+            Optimizer.VecNGD: make_stateful_optimizer_factory(
+                ManualVecNGD, loss=loss_fn
+            ),
             Optimizer.SAM: make_stateful_optimizer_factory(ManualSAM, loss=loss_fn),
-            Optimizer.SAM_LossNGD: make_stateful_optimizer_factory(ManualSAM_LossNGD, loss=loss_fn),
-            Optimizer.SAM_VecNGD: make_stateful_optimizer_factory(ManualSAM_VecNGD, loss=loss_fn),
+            Optimizer.SAM_LossNGD: make_stateful_optimizer_factory(
+                ManualSAM_LossNGD, loss=loss_fn
+            ),
+            Optimizer.SAM_VecNGD: make_stateful_optimizer_factory(
+                ManualSAM_VecNGD, loss=loss_fn
+            ),
         }
     else:
         # Standard implementations for Linear models
@@ -215,8 +232,12 @@ def default_optimizer_family_gd(model, loss_fn, use_manual: bool = False, **kwar
             Optimizer.LossNGD: make_optimizer_factory(step_loss_ngd, loss=loss_fn),
             Optimizer.VecNGD: make_optimizer_factory(step_vec_ngd, loss=loss_fn),
             Optimizer.SAM: make_optimizer_factory(step_sam_stable, loss=loss_fn),
-            Optimizer.SAM_LossNGD: make_optimizer_factory(step_sam_loss_ngd, loss=loss_fn),
-            Optimizer.SAM_VecNGD: make_optimizer_factory(step_sam_vec_ngd, loss=loss_fn),
+            Optimizer.SAM_LossNGD: make_optimizer_factory(
+                step_sam_loss_ngd, loss=loss_fn
+            ),
+            Optimizer.SAM_VecNGD: make_optimizer_factory(
+                step_sam_vec_ngd, loss=loss_fn
+            ),
         }
 
     sweeps = {
@@ -265,8 +286,12 @@ def default_optimizer_family_adaptive(model, loss_fn, **kwargs):
     optimizer_factories = {
         Optimizer.Adam: make_stateful_optimizer_factory(ManualAdam, loss=loss_fn),
         Optimizer.AdaGrad: make_stateful_optimizer_factory(ManualAdaGrad, loss=loss_fn),
-        Optimizer.SAM_Adam: make_stateful_optimizer_factory(ManualSAM_Adam, loss=loss_fn),
-        Optimizer.SAM_AdaGrad: make_stateful_optimizer_factory(ManualSAM_AdaGrad, loss=loss_fn),
+        Optimizer.SAM_Adam: make_stateful_optimizer_factory(
+            ManualSAM_Adam, loss=loss_fn
+        ),
+        Optimizer.SAM_AdaGrad: make_stateful_optimizer_factory(
+            ManualSAM_AdaGrad, loss=loss_fn
+        ),
     }
 
     sweeps = {
@@ -292,6 +317,7 @@ def default_optimizer_family_adaptive(model, loss_fn, **kwargs):
 # ============================================================================
 # Run args
 # ============================================================================
+
 
 def default_deterministic_run(
     total_iters: int = 10_000,
@@ -354,6 +380,7 @@ def default_stochastic_run(
 # ============================================================================
 # Plot args
 # ============================================================================
+
 
 def default_plot_options(
     experiment_name: str,

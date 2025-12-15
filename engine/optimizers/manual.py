@@ -551,8 +551,16 @@ class ManualTwolayerVecNGD(OptimizerState):
 
             # 2. Compute Global Norm
             gnorm = torch.sqrt(g1.norm() ** 2 + g2.norm() ** 2)  # type: ignore[arg-type]
-            # For VecNGD: update_direction = gradient / ||gradient||, so update_norm = 1
-            update_norm = torch.ones_like(gnorm) if gnorm > GRAD_TOL else torch.zeros_like(gnorm)
+            # For VecNGD: update_direction = gradient / ||gradient||, so update_norm = ||gradient / ||gradient|| || = 1
+            if gnorm > GRAD_TOL:
+                # Update vectors: g1/gnorm and g2/gnorm
+                update_vector_W1 = g1 / gnorm
+                update_vector_W2 = g2 / gnorm
+                update_norm = torch.sqrt(
+                    update_vector_W1.norm() ** 2 + update_vector_W2.norm() ** 2
+                )  # Should be 1.0, but compute it properly
+            else:
+                update_norm = torch.zeros_like(gnorm)
             self.collect_metrics(gnorm, update_norm, loss)
 
             # 3. Vector-Normalized GD Update
@@ -748,8 +756,13 @@ class ManualTwolayerSAM_VecNGD(OptimizerState):
                 gnorm_adv = torch.sqrt(g1_adv.norm() ** 2 + g2_adv.norm() ** 2)  # type: ignore[arg-type]
 
                 if gnorm_adv > GRAD_TOL:
-                    # For SAM_VecNGD: update_direction = grad_adv / ||grad_adv||, so update_norm = 1
-                    update_norm = torch.ones_like(gnorm)
+                    # For SAM_VecNGD: update_direction = grad_adv / ||grad_adv||, so update_norm = ||grad_adv / ||grad_adv|| || = 1
+                    # Update vectors: g1_adv/gnorm_adv and g2_adv/gnorm_adv
+                    update_vector_W1 = g1_adv / gnorm_adv
+                    update_vector_W2 = g2_adv / gnorm_adv
+                    update_norm = torch.sqrt(
+                        update_vector_W1.norm() ** 2 + update_vector_W2.norm() ** 2
+                    )  # Should be 1.0, but compute it properly
                     self.collect_metrics(gnorm, update_norm, loss)
 
                     # Normalize by gradient norm instead of loss

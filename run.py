@@ -115,6 +115,16 @@ def parse_args():
         choices=["True", "False"],
         help="Whether to use deterministic (full-batch) training: 'True' or 'False'",
     )
+    parser.add_argument(
+        "--iters",
+        type=int,
+        help="Number of iterations/epochs to run (default: 10_000)",
+    )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Disable debug output during training",
+    )
 
     args = parser.parse_args()
 
@@ -128,7 +138,7 @@ def parse_args():
             ("loss", "--loss"),
             ("deterministic", "--deterministic"),
         ]
-        missing = [arg_name for arg, arg_flag in required_args if not getattr(args, arg)]
+        missing = [arg for arg, arg_flag in required_args if not getattr(args, arg)]
         if missing:
             parser.error(
                 f"Either --preset must be specified, or all of these arguments are required: "
@@ -187,7 +197,9 @@ def get_config(args):
         model_factory = default_model_linear(input_dim=5000, device=device)
         use_manual = False
     else:  # twolayer
-        model_factory = default_model_twolayer(input_dim=5000, hidden_dim=50, device=device)
+        model_factory = default_model_twolayer(
+            input_dim=5000, hidden_dim=50, device=device
+        )
         use_manual = True
 
     # Get dataset generation config
@@ -207,10 +219,12 @@ def get_config(args):
 
     # Expand sweep grid
     from engine import expand_sweep_grid
+
     optimizer_configs = expand_sweep_grid(optimizer_factories, sweeps)
 
-    # Get dataset
-    X, y, v_pop = make_soudry_dataset(**dataset_config)
+    # Get dataset - filter out test_size for make_soudry_dataset
+    dataset_params = {k: v for k, v in dataset_config.items() if k != "test_size"}
+    X, y, v_pop = make_soudry_dataset(**dataset_params)
     w_star = get_empirical_max_margin(X, y)
     datasets = split_train_test(X, y, test_size=dataset_config["test_size"])
 
@@ -219,10 +233,14 @@ def get_config(args):
 
     # Determine run type (deterministic vs stochastic)
     deterministic = args.deterministic == "True"
+    iters = args.iters if args.iters else 10_000
+    debug = not args.quiet
     if deterministic:
-        run_config = default_deterministic_run(total_iters=10_000, debug=True)
+        run_config = default_deterministic_run(total_iters=iters, debug=debug)
     else:
-        run_config = default_stochastic_run(num_epochs=10_000, batch_size=32, debug=True)
+        run_config = default_stochastic_run(
+            num_epochs=iters, batch_size=32, debug=debug
+        )
 
     # Get plotting config
     plot_config = default_plot_options(experiment_name=args.output)
@@ -256,13 +274,16 @@ def main():
     print(f"  Loss function: {args.loss}")
     print(f"  Experiment name: {args.output}")
     print(f"  Deterministic: {args.deterministic}")
+    if args.iters:
+        print(f"  Iterations/epochs: {args.iters}")
+    if args.quiet:
+        print(f"  Debug mode: False (quiet)")
     print()
 
     # Get configuration from default_run_params
     config = get_config(args)
 
     print("Configuration retrieved successfully!")
-    print(f"  Optimizers: {list(config['optimizer_configs'].keys())}")
     print(f"  Number of configs: {len(config['optimizer_configs'])}")
     print()
 

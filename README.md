@@ -87,6 +87,12 @@ python run.py --preset soudry_gd --output custom_experiment_name
     Training mode:
     - True: Full-batch deterministic training
     - False: Mini-batch stochastic training (SGD)
+
+--iters INT
+    Number of iterations/epochs to run (default: 10,000)
+
+--quiet
+    Disable debug output during training
 ```
 
 #### Examples:
@@ -99,6 +105,14 @@ python run.py --preset adam_sgd --output my_custom_name
 # Manual configuration
 python run.py --optimizer-family gd --model linear --output exp1 --loss logistic --deterministic True
 python run.py --optimizer-family adaptive --model twolayer --output exp2 --loss logistic --deterministic False
+
+# Custom number of iterations
+python run.py --preset soudry_gd --iters 5000
+python run.py --optimizer-family gd --model linear --output exp3 --loss logistic --deterministic True --iters 20000
+
+# Quiet mode (disable debug output)
+python run.py --preset soudry_gd --quiet
+python run.py --optimizer-family adaptive --model twolayer --output exp4 --loss logistic --deterministic False --iters 5000 --quiet
 ```
 
 ### Default Values
