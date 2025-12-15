@@ -36,6 +36,7 @@ ManualSAM_NGD = ManualSAM_LossNGD
 from .base import (
     make_optimizer,
     make_optimizer_factory,
+    make_stateful_optimizer_factory,
     OptimizerState,
     StatelessOptimizer,
     StatefulOptimizer,
@@ -54,6 +55,7 @@ __all__ = [
     "step_sam_ngd_stable",  # Backward compatibility
     "make_optimizer",
     "make_optimizer_factory",
+    "make_stateful_optimizer_factory",
     "OptimizerState",
     "StatelessOptimizer",
     "StatefulOptimizer",

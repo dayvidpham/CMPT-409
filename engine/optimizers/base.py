@@ -252,3 +252,35 @@ def make_optimizer_factory(
         return StatelessOptimizer(partial(step_fn, **merged), loss=loss)
 
     return factory
+
+
+def make_stateful_optimizer_factory(
+    optimizer_fn: Callable[..., OptimizerState],
+    loss: Optional[Loss] = None,
+    **fixed_kwargs,
+) -> Callable[..., OptimizerState]:
+    """
+    Create factory for stateful optimizers with optional fixed hyperparameters and loss.
+
+    Args:
+        optimizer_fn: The optimizer factory function (e.g., ManualGD, ManualSAM)
+        loss: Loss function to use (defaults to what the optimizer_fn uses)
+        **fixed_kwargs: Hyperparameters to fix at factory creation time
+
+    Returns:
+        Factory callable that accepts additional kwargs and returns optimizer instance.
+
+    Example:
+        >>> # Factory with LogisticLoss
+        >>> from engine.losses import LogisticLoss
+        >>> from engine.optimizers.manual import ManualGD
+        >>> gd_factory = make_stateful_optimizer_factory(ManualGD, loss=LogisticLoss())
+        >>> opt = gd_factory()  # Creates ManualTwolayerGD with LogisticLoss
+    """
+    def factory(**kwargs) -> OptimizerState:
+        merged = {**fixed_kwargs, **kwargs}
+        if loss is not None:
+            merged['loss'] = loss
+        return optimizer_fn(**merged)
+
+    return factory
