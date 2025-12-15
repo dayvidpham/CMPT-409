@@ -39,6 +39,87 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+## Quick Start: Configurable Runner (`run.py`)
+
+The easiest way to run experiments is using the `run.py` script with presets:
+
+```bash
+# Using presets (recommended)
+python run.py --preset soudry_gd       # Linear model, GD family, deterministic
+python run.py --preset soudry_sgd      # Linear model, GD family, stochastic
+python run.py --preset adam_gd         # Two-layer model, adaptive optimizers, deterministic
+python run.py --preset adam_sgd        # Two-layer model, adaptive optimizers, stochastic
+
+# Override preset output name
+python run.py --preset soudry_gd --output custom_experiment_name
+```
+
+### `run.py` CLI Arguments
+
+#### Using Presets (Other args optional):
+
+```
+--preset {soudry_gd, soudry_sgd, adam_gd, adam_sgd}
+    Preset configuration that sets all other parameters to defaults.
+    Other arguments can still override preset defaults.
+```
+
+#### Manual Configuration (All args required if no preset):
+
+```
+--optimizer-family {gd, adaptive}
+    Optimizer family to use:
+    - gd: Gradient Descent, Natural Gradient, SAM variants
+    - adaptive: Adam, AdaGrad, SAM variants
+
+--model {linear, twolayer}
+    Model architecture:
+    - linear: LinearModel (good for Soudry dataset)
+    - twolayer: TwoLayerModel (for more complex patterns)
+
+--output EXPERIMENT_NAME
+    Name for the experiment (used for plotting and output directories)
+
+--loss {logistic, exponential}
+    Loss function to use
+
+--deterministic {True, False}
+    Training mode:
+    - True: Full-batch deterministic training
+    - False: Mini-batch stochastic training (SGD)
+```
+
+#### Examples:
+
+```bash
+# Using presets
+python run.py --preset soudry_gd
+python run.py --preset adam_sgd --output my_custom_name
+
+# Manual configuration
+python run.py --optimizer-family gd --model linear --output exp1 --loss logistic --deterministic True
+python run.py --optimizer-family adaptive --model twolayer --output exp2 --loss logistic --deterministic False
+```
+
+### Default Values
+
+All default hyperparameters, model configurations, loss functions, and run parameters are centralized in:
+
+```
+engine/default_run_params.py
+```
+
+Key defaults include:
+
+- **Learning Rates**: `[1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2]` (7 values)
+- **Rho Values** (SAM hyperparameter): `[1e-2, 1e-1, 1e0, 1e1, 1e2, 1e3]` (6 values)
+- **Dataset**: 200 samples, 5000 dimensions, 40 test samples
+- **Loss Function**: LogisticLoss (used by all presets)
+- **Deterministic Training**: 10,000 iterations (full-batch)
+- **Stochastic Training**: 10,000 epochs, batch size 32
+
+To customize defaults, modify `engine/default_run_params.py` directly or override via CLI arguments in `run.py`.
+
 ## Running the Core Experiments (GD / NGD / SAM / SAM–NGD)
 
 To run the main Soudry-style experiment:
