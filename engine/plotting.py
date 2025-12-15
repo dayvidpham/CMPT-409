@@ -1051,8 +1051,8 @@ def _aggregate_runs(all_values, steps):
 def _compute_rho_vibrancy_color(lr: float, rho: float, all_lrs: List[float], all_rhos: List[float]) -> Tuple[float, float, float]:
     """
     Compute color where LR determines hue and rho determines vibrancy.
-    Higher rho = more vibrant (higher saturation, lower lightness).
-    Lower rho = more pastel (lower saturation, higher lightness).
+    Base optimizers (rho=0) get hue-shifted pastel paired color.
+    SAM variants: higher rho = more vibrant, lower rho = more pastel.
 
     Args:
         lr: Learning rate value
@@ -1077,15 +1077,17 @@ def _compute_rho_vibrancy_color(lr: float, rho: float, all_lrs: List[float], all
     else:
         lr_normalized = 0.5
 
-    hue = (lr_normalized * 330.0) % 360.0  # Use 330° to avoid red-red overlap
+    base_hue = (lr_normalized * 330.0) % 360.0  # Use 330° to avoid red-red overlap
 
     # Map rho to vibrancy (saturation and lightness)
-    # Special case: rho=0.0 (base optimizer) should be MOST vibrant
-    # SAM variants (rho > 0) vary from less vibrant to more vibrant
+    # Base optimizer (rho=0.0) should be MOST vibrant
+    # SAM variants (rho > 0) vary from pastel to vibrant
+    hue = base_hue  # Always use base hue (no shifting for sam_comparison/stability_analysis)
+
     if rho == 0.0:
         # Base optimizer: maximum vibrancy
-        saturation = 95.0
-        lightness = 45.0
+        saturation = 100.0
+        lightness = 40.0
     else:
         # SAM variants: scale vibrancy with rho
         sorted_rhos = sorted([r for r in all_rhos if r > 0.0])  # Only non-zero rhos
@@ -1097,8 +1099,9 @@ def _compute_rho_vibrancy_color(lr: float, rho: float, all_lrs: List[float], all
             rho_normalized = 0.5
 
         # Higher rho = more vibrant (higher saturation, lower lightness)
-        saturation = 30.0 + 65.0 * rho_normalized  # 30% to 95%
-        lightness = 85.0 - 40.0 * rho_normalized  # 85% to 45%
+        # Lower rho = more pastel (lower saturation, higher lightness)
+        saturation = 30.0 + 70.0 * rho_normalized  # 30% to 100%
+        lightness = 85.0 - 45.0 * rho_normalized  # 85% to 40%
 
     if hsluv is None:
         # Fallback to simple HSV conversion
@@ -1271,12 +1274,8 @@ def plot_stability_analysis(
         )
         sample_lr = all_lrs[0] if all_lrs else 0.01
 
-        # Show Min, Mid, Max rho
-        indices = (
-            [0, len(all_rhos) // 2, -1] if len(all_rhos) > 2 else range(len(all_rhos))
-        )
-        for i in sorted(list(set(indices))):
-            rho = all_rhos[i]
+        # Show ALL rho values
+        for rho in sorted(all_rhos):
             c_rgb = _compute_rho_vibrancy_color(sample_lr, rho, all_lrs, all_rhos)
             legend_elements.append(Line2D([0], [0], color=c_rgb, lw=3, alpha=0.8, label=f"  rho={rho}"))
 
@@ -1520,15 +1519,9 @@ def plot_sam_comparison(
         legend_elements.append(
             Patch(facecolor="none", edgecolor="none", label="rho (Vibrancy, SAM only):")
         )
-        # Show a few representative rho values with first LR
+        # Show ALL rho values
         sample_lr = all_lrs[0] if all_lrs else 0.01
-        rho_indices = (
-            [0, len(all_rhos) // 2, -1]
-            if len(all_rhos) > 2
-            else list(range(len(all_rhos)))
-        )
-        for i in rho_indices:
-            rho = all_rhos[i]
+        for rho in sorted(all_rhos):
             c_rgb = _compute_rho_vibrancy_color(sample_lr, rho, all_lrs, all_rhos)
             legend_elements.append(
                 Line2D(
