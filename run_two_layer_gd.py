@@ -15,7 +15,9 @@ from engine import (
     get_error_rate,
     expand_sweep_grid,
 )
-from engine.losses import ExponentialLoss
+from engine.losses import ExponentialLoss, LogisticLoss
+from engine.metrics import compute_update_norm, get_angle, get_direction_distance, get_empirical_max_margin, get_weight_norm
+from engine.optimizers import make_stateful_optimizer_factory
 from engine.optimizers.manual import (
     ManualGD,
     ManualLossNGD,
@@ -37,53 +39,66 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    # ----------------------------------------------------------
-    # Dataset
-    # ----------------------------------------------------------
-    N, D = 200, 5000
-    X, y, v_pop = make_soudry_dataset(N, D, device=device)
-    print("Dataset ready:", X.shape, y.shape)
+    # Generate dataset
+    N = 200
+    D = 5000
+    test_size = 40
+
+    X, y, v_pop = make_soudry_dataset(n=N, d=D, margin=1.0, device=device)
+    w_star = get_empirical_max_margin(X, y)
 
     # Split data
-    datasets = split_train_test(X, y, test_size=0.2, random_state=42)
+    datasets = split_train_test(X, y, test_size=test_size)
 
     # ----------------------------------------------------------
     # 2-layer width
     # ----------------------------------------------------------
+
     k = 50
 
     # Model factory (Torch only now)
     def model_factory():
         return TwoLayerModel(D, k, device=device)
 
+    # === Loss function (configurable) ===
+    # Choose which loss function to use
+    # loss_fn = ExponentialLoss()  # Uncomment for default exponential loss
+    loss_fn = LogisticLoss()  # Using LogisticLoss as example
+
     # Metrics factory (NO w_star for two-layer)
     def metrics_factory(model):
         return MetricsCollector(
             metric_fns={
-                Metric.Loss: ExponentialLoss(),
+                Metric.Loss: loss_fn,  # Use configured loss function for metrics
                 Metric.Error: get_error_rate,
+                Metric.Angle: get_angle,
+                Metric.Distance: get_direction_distance,
+                Metric.WeightNorm: get_weight_norm,
+                Metric.UpdateNorm: compute_update_norm,  # Function not used, optimizer provides grad_norm
+                Metric.GradLossRatio: loss_fn,  # Function not used, computed from grad_norm/loss
             },
-            w_star=None,  # No reference solution for multi-layer
+            w_star=w_star,
         )
 
     # ----------------------------------------------------------
     # Optimizer factories
     # ----------------------------------------------------------
     optimizer_factories = {
-        Optimizer.GD: ManualGD,
-        Optimizer.LossNGD: ManualLossNGD,
-        Optimizer.VecNGD: ManualVecNGD,
-        Optimizer.SAM: ManualSAM,
-        Optimizer.SAM_LossNGD: ManualSAM_LossNGD,
-        Optimizer.SAM_VecNGD: ManualSAM_VecNGD,
+        Optimizer.GD: make_stateful_optimizer_factory(ManualGD, loss=loss_fn),
+        Optimizer.LossNGD: make_stateful_optimizer_factory(ManualLossNGD, loss=loss_fn),
+        Optimizer.VecNGD: make_stateful_optimizer_factory(ManualVecNGD, loss=loss_fn),
+        Optimizer.SAM: make_stateful_optimizer_factory(ManualSAM, loss=loss_fn),
+        Optimizer.SAM_LossNGD: make_stateful_optimizer_factory(ManualSAM_LossNGD, loss=loss_fn),
+        Optimizer.SAM_VecNGD: make_stateful_optimizer_factory(ManualSAM_VecNGD, loss=loss_fn),
     }
 
     # ----------------------------------------------------------
     # Hyperparameter sweeps
     # ----------------------------------------------------------
-    learning_rates = [1e-4, 1e-3, 1e-2, 1e-1, 1e0]
-    rho_values = [0.05]
-    total_iters = 10_000
+    learning_rates = [1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2]
+    rho_values = [1e-2, 1e-1, 1e0, 1e1, 1e2, 1e3]
+    total_iters = 100
+
 
     sweeps = {
         Optimizer.GD: {
@@ -128,7 +143,13 @@ def main():
     # ----------------------------------------------------------
     # Plot
     # ----------------------------------------------------------
-    plot_all(results, experiment_name="2layers_gd_family")
+    plot_all(
+        results,
+        experiment_name="soudry_twolayers_gd",
+        save_separate=False,    # slow af
+        save_aggregated=False,  # deprecated
+        save_combined=False,    # deprecated
+    )
 
 
 if __name__ == "__main__":
