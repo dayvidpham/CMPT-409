@@ -894,7 +894,7 @@ with tabs[2]:
                     fig3.legend(
                         handles=legend_elements,
                         loc='upper center',
-                        bbox_to_anchor=(0.5, 1.02),
+                        bbox_to_anchor=(0.5, 1.08),
                         ncol=min(len(legend_elements), 6),
                         frameon=True,
                         fontsize=11
@@ -902,7 +902,7 @@ with tabs[2]:
 
                 # Add title if provided
                 if global_title:
-                    fig3.suptitle(global_title, fontsize=14, y=1.05 if global_show_legend else 0.98)
+                    fig3.suptitle(global_title, fontsize=14, y=1.13 if global_show_legend else 0.98)
 
                 st.pyplot(fig3)
                 img3 = io.BytesIO()
@@ -910,31 +910,286 @@ with tabs[2]:
                 st.download_button("Download Grid PDF", data=img3, file_name="hyperparam_grid.pdf", mime="application/pdf")
 
 # ==============================================================================
-# TAB 4: Stability Analysis
+# TAB 4: Ratio Analysis (Finding 4)
 # ==============================================================================
 with tabs[3]:
-    st.header("Stability Analysis")
-    stab_metric = st.selectbox("Stability Metric", ["w_norm", "update_norm", "grad_norm"], index=0)
-    
-    available_stab = [m for m in all_metrics if stab_metric in m]
-    if available_stab:
-        metric_key = available_stab[0]
-        fig4, ax4 = plt.subplots(figsize=(12, 7))
-        strategy4 = PlotStrategy(x_scale=AxisScale.Log, y_scale=AxisScale.Linear)
-        strategy4.configure_axis(ax4, base_label=metric_key)
-        
-        colors = ColorManagerFactory.create_sequential_lr_manager(sorted_lrs, sorted_rhos)
-        
-        for opt in selected_opts:
-            for params in all_params.get(opt, []):
+    st.header("Finding 4: Optimizer Ratio Analysis")
+
+    # Local controls specific to Finding 4
+    col1_f4, col2_f4 = st.columns(2)
+    with col1_f4:
+        ratio_metric = st.selectbox("Metric (Y-Axis)", all_metrics_global, index=all_metrics_global.index("angle") if "angle" in all_metrics_global else 0, key="f4_metric")
+    with col2_f4:
+        x_axis_type_f4 = st.radio("X-Axis Scale", ["Log", "Linear"], horizontal=True, key="f4_x_scale")
+
+    # Title controls for each plot
+    col1_title_f4, col2_title_f4 = st.columns(2)
+    with col1_title_f4:
+        title_base_f4 = st.text_input("LossNGD/VecNGD Plot Title", global_title or "", key="f4_title_base")
+    with col2_title_f4:
+        title_sam_f4 = st.text_input("SAM_LossNGD/SAM_VecNGD Plot Title", global_title or "", key="f4_title_sam")
+
+    strategy_f4 = PlotStrategy(
+        x_scale=AxisScale.Log if x_axis_type_f4 == "Log" else AxisScale.Linear,
+        y_scale=AxisScale.Log if "loss" in ratio_metric or "distance" in ratio_metric or "angle" in ratio_metric else AxisScale.Linear
+    )
+
+    # Helper function to compute ratio (same as earlier)
+    def compute_ratio_f4(reader, opt1, opt2, metric, params, seed):
+        """Compute ratio of opt1/opt2 for a given metric, params, and seed."""
+        try:
+            data1 = reader.get_data(opt1, params, seed, metric)
+            data2 = reader.get_data(opt2, params, seed, metric)
+
+            # Ensure both arrays have the same length
+            min_len = min(len(data1), len(data2))
+            data1 = data1[:min_len]
+            data2 = data2[:min_len]
+
+            # Compute ratio (avoid division by zero)
+            ratio = np.divide(data1, data2, where=data2!=0, out=np.full_like(data1, np.nan))
+            return ratio
+        except KeyError:
+            return None
+
+    # Check if we have the required optimizers
+    has_base_ratio = 'LossNGD' in all_optimizers_global and 'VecNGD' in all_optimizers_global
+    has_sam_ratio = 'SAM_LossNGD' in all_optimizers_global and 'SAM_VecNGD' in all_optimizers_global
+
+    if not has_base_ratio and not has_sam_ratio:
+        st.warning("Required optimizers (LossNGD/VecNGD or SAM_LossNGD/SAM_VecNGD) not found in data.")
+    else:
+        # Extract LRs and rhos from available optimizers
+        all_lrs_f4 = set()
+        all_rhos_f4 = set()
+        for opt in ['LossNGD', 'VecNGD', 'SAM_LossNGD', 'SAM_VecNGD']:
+            if opt in all_optimizers_global:
+                for p in all_params_global.get(opt, []):
+                    if 'lr' in p: all_lrs_f4.add(p['lr'])
+                    if 'rho' in p: all_rhos_f4.add(p['rho'])
+
+        sorted_lrs_f4 = sorted(list(all_lrs_f4))
+        sorted_rhos_f4 = sorted(list(all_rhos_f4))
+
+        # Helper function for colors (reuse from Finding 1)
+        def compute_rho_vibrancy_color_f4(lr, rho, all_lrs, all_rhos):
+            """Match the exact color computation from engine/plotting.py"""
+            import colorsys
+            try:
+                import hsluv
+            except ImportError:
+                hsluv = None
+
+            # Map LR to hue position
+            sorted_lrs_local = sorted(all_lrs)
+            n_lrs = len(sorted_lrs_local)
+            if lr in sorted_lrs_local:
+                lr_rank = sorted_lrs_local.index(lr)
+                lr_normalized = lr_rank / max(1, n_lrs - 1)
+            else:
+                lr_normalized = 0.5
+
+            base_hue = (lr_normalized * 330.0) % 360.0
+            hue = base_hue
+
+            if rho == 0.0:
+                saturation = 100.0
+                lightness = 40.0
+            else:
+                sorted_rhos_local = sorted([r for r in all_rhos if r > 0.0])
+                n_rhos = len(sorted_rhos_local)
+                if n_rhos > 0 and rho in sorted_rhos_local:
+                    rho_rank = sorted_rhos_local.index(rho)
+                    rho_normalized = rho_rank / max(1, n_rhos - 1)
+                else:
+                    rho_normalized = 0.5
+
+                hue_shift = (rho_normalized - 0.5) * 30.0
+                hue = (base_hue + hue_shift) % 360.0
+                saturation = 15.0 + 70.0 * rho_normalized
+                lightness = 85.0 - 45.0 * rho_normalized
+
+            if hsluv is None:
+                rgb = colorsys.hsv_to_rgb(hue / 360.0, saturation / 100.0, lightness / 100.0)
+            else:
+                rgb = hsluv.hsluv_to_rgb((hue, saturation, lightness))
+
+            return (rgb[0], rgb[1], rgb[2])
+
+        # We'll create two separate figures
+        count_base = 0
+        count_sam = 0
+
+        # ==============================================================
+        # FIGURE 1: Base ratio (LossNGD / VecNGD)
+        # ==============================================================
+        if has_base_ratio:
+            fig_base, ax_base = plt.subplots(figsize=(10, 7))
+            strategy_f4.configure_axis(ax_base, base_label=ratio_metric)
+
+            # Set labels
+            ax_base.set_xlabel(global_x_label, fontsize=14)
+            ax_base.set_ylabel(f"{ratio_metric} Ratio", fontsize=14)
+            ax_base.tick_params(axis='both', which='major', labelsize=14)
+            # Get params that exist in both LossNGD and VecNGD
+            lossngd_params = all_params_global.get('LossNGD', [])
+            vecngd_params = all_params_global.get('VecNGD', [])
+            common_params = [p for p in lossngd_params if p in vecngd_params]
+
+            for params in common_params:
+                lr = params.get('lr')
+                rho = 0.0  # Base optimizers have rho=0
+
+                run_data = []
+                steps = None
+                for seed in reader_global.seeds:
+                    ratio = compute_ratio_f4(reader_global, 'LossNGD', 'VecNGD', ratio_metric, params, seed)
+                    if ratio is not None:
+                        try:
+                            steps_data = reader_global.get_data('LossNGD', params, seed, 'steps')
+                            run_data.append(ratio)
+                            steps = steps_data[:len(ratio)]
+                        except: pass
+
+                if run_data and steps is not None:
+                    mean_data = np.mean(np.stack(run_data), axis=0)
+                    c = compute_rho_vibrancy_color_f4(lr, rho, sorted_lrs_f4, sorted_rhos_f4)
+
+                    ctx = PlotContext(
+                        ax=ax_base, x=steps, y=mean_data,
+                        label="_nolegend_",
+                        plot_kwargs={"color": c, "linewidth": 2.0, "alpha": 0.8}
+                    )
+                    strategy_f4.plot(ctx)
+                    count_base += 1
+
+            # Add legend if enabled
+            if global_show_legend and count_base > 0:
+                legend_elements = []
+
+                # Learning Rate (Hue)
+                if sorted_lrs_f4:
+                    legend_elements.append(Patch(facecolor="none", edgecolor="none", label="Learning Rate (Hue):"))
+                    mid_rho_idx = len(sorted_rhos_f4) // 2 if sorted_rhos_f4 else 0
+                    sample_rho = sorted_rhos_f4[mid_rho_idx] if sorted_rhos_f4 else 0.0
+                    for lr in sorted_lrs_f4:
+                        c_rgb = compute_rho_vibrancy_color_f4(lr, sample_rho, sorted_lrs_f4, sorted_rhos_f4)
+                        legend_elements.append(Line2D([0], [0], color=c_rgb, linewidth=3, label=f"  lr={lr}"))
+
+                if legend_elements:
+                    fig_base.legend(
+                        handles=legend_elements,
+                        loc='upper center',
+                        bbox_to_anchor=(0.5, 1.02),
+                        ncol=min(len(legend_elements), 8),
+                        frameon=True,
+                        fontsize=11,
+                        handlelength=2.0,
+                        handleheight=0.7,
+                        labelspacing=0.3,
+                        columnspacing=1.5,
+                    )
+
+            # Add title if provided
+            if title_base_f4:
+                fig_base.suptitle(title_base_f4, fontsize=14, y=1.08 if global_show_legend else 0.98)
+
+            st.pyplot(fig_base)
+
+            # Download button for base ratio
+            fn_base = f"LossNGD_VecNGD_ratio_{ratio_metric}.pdf"
+            img_base = io.BytesIO()
+            fig_base.savefig(img_base, format='pdf', bbox_inches='tight')
+            st.download_button(label="Download LossNGD/VecNGD Ratio PDF", data=img_base, file_name=fn_base, mime="application/pdf", key="download_base_ratio")
+
+        # ==============================================================
+        # FIGURE 2: SAM ratio (SAM_LossNGD / SAM_VecNGD)
+        # ==============================================================
+        if has_sam_ratio:
+            fig_sam, ax_sam = plt.subplots(figsize=(10, 7))
+            strategy_f4.configure_axis(ax_sam, base_label=ratio_metric)
+
+            # Set labels
+            ax_sam.set_xlabel(global_x_label, fontsize=14)
+            ax_sam.set_ylabel(f"{ratio_metric} Ratio", fontsize=14)
+            ax_sam.tick_params(axis='both', which='major', labelsize=14)
+            # Get params that exist in both SAM_LossNGD and SAM_VecNGD
+            sam_lossngd_params = all_params_global.get('SAM_LossNGD', [])
+            sam_vecngd_params = all_params_global.get('SAM_VecNGD', [])
+            common_sam_params = [p for p in sam_lossngd_params if p in sam_vecngd_params]
+
+            for params in common_sam_params:
                 lr = params.get('lr')
                 rho = params.get('rho', 0.0)
-                try:
-                    y = reader.get_data(opt, params, 0, metric_key)
-                    x = reader.get_data(opt, params, 0, 'steps')
-                    c = colors.color_config(lr, rho)
-                    ax4.plot(x, y, color=c, label="_nolegend_")
-                except: pass
-        
-        add_custom_split_legend(ax4, colors, sorted_lrs, sorted_rhos)
-        st.pyplot(fig4)
+
+                run_data = []
+                steps = None
+                for seed in reader_global.seeds:
+                    ratio = compute_ratio_f4(reader_global, 'SAM_LossNGD', 'SAM_VecNGD', ratio_metric, params, seed)
+                    if ratio is not None:
+                        try:
+                            steps_data = reader_global.get_data('SAM_LossNGD', params, seed, 'steps')
+                            run_data.append(ratio)
+                            steps = steps_data[:len(ratio)]
+                        except: pass
+
+                if run_data and steps is not None:
+                    mean_data = np.mean(np.stack(run_data), axis=0)
+                    c = compute_rho_vibrancy_color_f4(lr, rho, sorted_lrs_f4, sorted_rhos_f4)
+
+                    ctx = PlotContext(
+                        ax=ax_sam, x=steps, y=mean_data,
+                        label="_nolegend_",
+                        plot_kwargs={"color": c, "linewidth": 2.0, "alpha": 0.8}
+                    )
+                    strategy_f4.plot(ctx)
+                    count_sam += 1
+
+            # Add legend if enabled
+            if global_show_legend and count_sam > 0:
+                legend_elements = []
+
+                # Learning Rate (Hue)
+                if sorted_lrs_f4:
+                    legend_elements.append(Patch(facecolor="none", edgecolor="none", label="Learning Rate (Hue):"))
+                    mid_rho_idx = len(sorted_rhos_f4) // 2 if sorted_rhos_f4 else 0
+                    sample_rho = sorted_rhos_f4[mid_rho_idx] if sorted_rhos_f4 else 0.0
+                    for lr in sorted_lrs_f4:
+                        c_rgb = compute_rho_vibrancy_color_f4(lr, sample_rho, sorted_lrs_f4, sorted_rhos_f4)
+                        legend_elements.append(Line2D([0], [0], color=c_rgb, linewidth=3, label=f"  lr={lr}"))
+
+                # Rho (Vibrancy)
+                if sorted_rhos_f4 and len(sorted_rhos_f4) > 1:
+                    legend_elements.append(Patch(facecolor="none", edgecolor="none", label=""))
+                    rho_label = "rho (Vibrancy, SAM only):"
+                    legend_elements.append(Patch(facecolor="none", edgecolor="none", label=rho_label))
+                    sample_lr = sorted_lrs_f4[0] if sorted_lrs_f4 else 0.01
+                    for rho in sorted_rhos_f4:
+                        c_rgb = compute_rho_vibrancy_color_f4(sample_lr, rho, sorted_lrs_f4, sorted_rhos_f4)
+                        legend_elements.append(Line2D([0], [0], color=c_rgb, linewidth=3, alpha=0.8, label=f"  rho={rho}"))
+
+                if legend_elements:
+                    fig_sam.legend(
+                        handles=legend_elements,
+                        loc='upper center',
+                        bbox_to_anchor=(0.5, 1.02),
+                        ncol=min(len(legend_elements), 8),
+                        frameon=True,
+                        fontsize=11,
+                        handlelength=2.0,
+                        handleheight=0.7,
+                        labelspacing=0.3,
+                        columnspacing=1.5,
+                    )
+
+            # Add title if provided
+            if title_sam_f4:
+                fig_sam.suptitle(title_sam_f4, fontsize=14, y=1.08 if global_show_legend else 0.98)
+
+            st.pyplot(fig_sam)
+
+            # Download button for SAM ratio
+            fn_sam = f"SAM_LossNGD_SAM_VecNGD_ratio_{ratio_metric}.pdf"
+            img_sam = io.BytesIO()
+            fig_sam.savefig(img_sam, format='pdf', bbox_inches='tight')
+            st.download_button(label="Download SAM_LossNGD/SAM_VecNGD Ratio PDF", data=img_sam, file_name=fn_sam, mime="application/pdf", key="download_sam_ratio")
