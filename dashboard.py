@@ -149,7 +149,78 @@ sorted_rhos = sorted(list(all_rhos))
 
 # --- Main Interface ---
 st.title("Experiment Findings Explorer")
-st.markdown(f"**Loaded:** `{selected_file}`")
+
+# ==============================================================================
+# GLOBAL CONTROLS (Apply to all findings)
+# ==============================================================================
+st.subheader("Global Settings")
+
+col1, col2 = st.columns(2)
+with col1:
+    # Experiment type toggle (global)
+    global_experiment_choice = st.radio(
+        "Experiment Type",
+        ["GD (Gradient Descent)", "SGD (Stochastic Gradient Descent)"],
+        horizontal=True,
+        key="global_experiment_choice"
+    )
+
+with col2:
+    global_show_legend = st.checkbox("Show Legend", value=True, key="global_legend")
+
+# Set global paths and parameters based on selection
+if "GD" in global_experiment_choice and "SGD" not in global_experiment_choice:
+    global_data_path = Path("experiments/prayers/soudry_gd/2025-12-15_12-41-06/results.npz")
+    is_sgd_global = False
+else:
+    global_data_path = Path("experiments/prayers/soudry_sgd/2025-12-15_13-04-25/results.npz")
+    is_sgd_global = True
+
+if not global_data_path.exists():
+    st.error(f"Data not found: {global_data_path}")
+    st.stop()
+
+# Load the global data
+try:
+    reader_global = load_data(str(global_data_path))
+except Exception as e:
+    st.error(f"Error loading data: {e}")
+    st.stop()
+
+# Set global labels and optimizer names
+global_x_label = "Epoch" if is_sgd_global else "Iteration"
+global_base_opt_name = "SGD" if is_sgd_global else "GD"
+global_sam_opt_name = "SAM_SGD" if is_sgd_global else "SAM_GD"
+
+# Get data from global reader
+all_optimizers_global = reader_global.optimizers
+all_metrics_global = reader_global.metrics
+all_params_global = reader_global.hyperparams
+
+# Global optimizer selectors
+col3, col4 = st.columns(2)
+with col3:
+    base_opts_global = [o for o in all_optimizers_global if "SAM" not in o]
+    global_base_opt = st.selectbox(
+        "Base Optimizer",
+        base_opts_global,
+        index=base_opts_global.index("GD") if "GD" in base_opts_global else 0,
+        key="global_base_opt"
+    )
+with col4:
+    sam_opts_global = [o for o in all_optimizers_global if "SAM" in o]
+    global_sam_opt = st.selectbox(
+        "SAM Variant",
+        sam_opts_global,
+        index=sam_opts_global.index("SAM") if "SAM" in sam_opts_global else 0,
+        key="global_sam_opt"
+    )
+
+# Global title
+global_default_title = f"Angle Difference from the Max-Margin Solution, for {global_base_opt_name} vs {global_sam_opt_name} for a Linear Model"
+global_title = st.text_input("Plot Title (applies to all findings)", global_default_title, key="global_title")
+
+st.markdown("---")
 
 tabs = st.tabs(["Trajectory Analysis (Finding 1)", "SAM vs Base (Finding 2)", "Hyperparam Grid (Finding 3)", "Stability Analysis"])
 
@@ -159,65 +230,12 @@ tabs = st.tabs(["Trajectory Analysis (Finding 1)", "SAM vs Base (Finding 2)", "H
 with tabs[0]:
     st.header("Trajectory Analysis")
 
-    # Toggle between GD and SGD results
-    experiment_choice = st.radio(
-        "Select Experiment Type",
-        ["GD (Gradient Descent)", "SGD (Stochastic Gradient Descent)"],
-        horizontal=True,
-        key="f1_experiment_choice"
-    )
-
-    # Set path based on selection
-    if "GD" in experiment_choice and "SGD" not in experiment_choice:
-        finding1_path = Path("experiments/prayers/soudry_gd/2025-12-15_12-41-06/results.npz")
-        is_sgd_f1 = False
-    else:
-        finding1_path = Path("experiments/prayers/soudry_sgd/2025-12-15_13-04-25/results.npz")
-        is_sgd_f1 = True
-
-    if not finding1_path.exists():
-        st.error(f"Finding 1 data not found: {finding1_path}")
-        st.stop()
-
-    # Load the results
-    try:
-        reader_f1 = load_data(str(finding1_path))
-    except Exception as e:
-        st.error(f"Error loading Finding 1 data: {e}")
-        st.stop()
-
-    # Set x-axis label based on experiment type
-    x_label = "Epoch" if is_sgd_f1 else "Iteration"
-
-    # Set optimizer names for title
-    base_opt_name = "SGD" if is_sgd_f1 else "GD"
-    sam_opt_name = "SAM_SGD" if is_sgd_f1 else "SAM_GD"
-
-    # Get data from Finding 1 reader
-    all_optimizers_f1 = reader_f1.optimizers
-    all_metrics_f1 = reader_f1.metrics
-    all_params_f1 = reader_f1.hyperparams
-
-    # Optimizer filters
+    # Local controls specific to Finding 1
     col1, col2 = st.columns(2)
     with col1:
-        base_opts = [o for o in all_optimizers_f1 if "SAM" not in o]
-        base_opt_f1 = st.selectbox("Base Optimizer", base_opts, index=base_opts.index("GD") if "GD" in base_opts else 0, key="f1_base")
+        plot_metric = st.selectbox("Metric (Y-Axis)", all_metrics_global, index=all_metrics_global.index("angle") if "angle" in all_metrics_global else 0, key="f1_metric")
     with col2:
-        sam_opts = [o for o in all_optimizers_f1 if "SAM" in o]
-        sam_opt_f1 = st.selectbox("SAM Variant", sam_opts, index=sam_opts.index("SAM") if "SAM" in sam_opts else 0, key="f1_sam")
-
-    col3, col4, col5 = st.columns(3)
-    with col3:
-        plot_metric = st.selectbox("Metric (Y-Axis)", all_metrics_f1, index=all_metrics_f1.index("angle") if "angle" in all_metrics_f1 else 0)
-    with col4:
-        x_axis_type = st.radio("X-Axis Scale", ["Log", "Linear"], horizontal=True, key="t1_x")
-    with col5:
-        show_legend = st.checkbox("Show Legend", value=True, key="t1_legend")
-
-    # Default title for Finding 1 (dynamic based on experiment type)
-    default_title = f"Angle Difference from the Max-Margin Solution, for {base_opt_name} vs {sam_opt_name} for a Linear Model"
-    plot_title = st.text_input("Plot Title (optional)", default_title, key="t1_title")
+        x_axis_type = st.radio("X-Axis Scale", ["Log", "Linear"], horizontal=True, key="f1_x_scale")
 
     strategy = PlotStrategy(
         x_scale=AxisScale.Log if x_axis_type == "Log" else AxisScale.Linear,
@@ -269,12 +287,12 @@ with tabs[0]:
 
         return (rgb[0], rgb[1], rgb[2])
 
-    # Extract LRs and rhos from Finding 1 data for the selected optimizers
-    selected_opts_f1 = [base_opt_f1, sam_opt_f1]
+    # Extract LRs and rhos from global data for the selected optimizers
+    selected_opts_f1 = [global_base_opt, global_sam_opt]
     all_lrs_f1 = set()
     all_rhos_f1 = set()
     for opt in selected_opts_f1:
-        for p in all_params_f1.get(opt, []):
+        for p in all_params_global.get(opt, []):
             if 'lr' in p: all_lrs_f1.add(p['lr'])
             if 'rho' in p: all_rhos_f1.add(p['rho'])
 
@@ -289,34 +307,38 @@ with tabs[0]:
     strategy.configure_axis(ax_sam, base_label=plot_metric)
 
     # Set titles with optimizer names (apply mapping for display)
-    display_base_name = base_opt_name if base_opt_f1 == "GD" else base_opt_f1
-    display_sam_name = sam_opt_name if sam_opt_f1 == "SAM" else sam_opt_f1
+    display_base_name = global_base_opt_name if global_base_opt == "GD" else global_base_opt
+    display_sam_name = global_sam_opt_name if global_sam_opt == "SAM" else global_sam_opt
     ax_gd.set_title(f"{display_base_name} (Base)", fontsize=12, pad=10)
     ax_sam.set_title(display_sam_name, fontsize=12, pad=10)
 
     # Set x-axis labels
-    ax_gd.set_xlabel(x_label, fontsize=11)
-    ax_sam.set_xlabel(x_label, fontsize=11)
+    ax_gd.set_xlabel(global_x_label, fontsize=14)
+    ax_sam.set_xlabel(global_x_label, fontsize=14)
 
     # Set y-axis labels on both subplots
-    ax_gd.set_ylabel("Angle Difference (radians)", fontsize=11)
-    ax_sam.set_ylabel("Angle Difference (radians)", fontsize=11)
+    ax_gd.set_ylabel("Angle Difference (radians)", fontsize=14)
+    ax_sam.set_ylabel("Angle Difference (radians)", fontsize=14)
+
+    # Set tick label font sizes
+    ax_gd.tick_params(axis='both', which='major', labelsize=14)
+    ax_sam.tick_params(axis='both', which='major', labelsize=14)
 
     count_gd = 0
     count_sam = 0
 
     # Plot base optimizer
-    opt_params = all_params_f1.get(base_opt_f1, [])
+    opt_params = all_params_global.get(global_base_opt, [])
     for params in opt_params:
         lr = params.get('lr')
         rho = 0.0  # Base optimizers have rho=0
 
         run_data = []
         steps = None
-        for seed in reader_f1.seeds:
+        for seed in reader_global.seeds:
             try:
-                data = reader_f1.get_data(base_opt_f1, params, seed, plot_metric)
-                steps_data = reader_f1.get_data(base_opt_f1, params, seed, 'steps')
+                data = reader_global.get_data(global_base_opt, params, seed, plot_metric)
+                steps_data = reader_global.get_data(global_base_opt, params, seed, 'steps')
                 run_data.append(data)
                 steps = steps_data
             except KeyError: pass
@@ -334,17 +356,17 @@ with tabs[0]:
             count_gd += 1
 
     # Plot SAM optimizer
-    opt_params = all_params_f1.get(sam_opt_f1, [])
+    opt_params = all_params_global.get(global_sam_opt, [])
     for params in opt_params:
         lr = params.get('lr')
         rho = params.get('rho', 0.0)
 
         run_data = []
         steps = None
-        for seed in reader_f1.seeds:
+        for seed in reader_global.seeds:
             try:
-                data = reader_f1.get_data(sam_opt_f1, params, seed, plot_metric)
-                steps_data = reader_f1.get_data(sam_opt_f1, params, seed, 'steps')
+                data = reader_global.get_data(global_sam_opt, params, seed, plot_metric)
+                steps_data = reader_global.get_data(global_sam_opt, params, seed, 'steps')
                 run_data.append(data)
                 steps = steps_data
             except KeyError: pass
@@ -363,7 +385,7 @@ with tabs[0]:
 
     if count_gd > 0 or count_sam > 0:
         # Add custom legend if enabled (matching sam_comparison style from plotting.py)
-        if show_legend:
+        if global_show_legend:
             legend_elements = []
 
             # Learning Rate (Hue)
@@ -379,7 +401,7 @@ with tabs[0]:
             # Rho (Vibrancy)
             if sorted_rhos_f1 and len(sorted_rhos_f1) > 1:
                 legend_elements.append(Patch(facecolor="none", edgecolor="none", label=""))
-                rho_label = f"rho (Vibrancy, {sam_opt_name} only):"
+                rho_label = f"rho (Vibrancy, {global_sam_opt_name} only):"
                 legend_elements.append(Patch(facecolor="none", edgecolor="none", label=rho_label))
                 # Use sample LR for rho color examples
                 sample_lr = sorted_lrs_f1[0] if sorted_lrs_f1 else 0.01
@@ -403,8 +425,8 @@ with tabs[0]:
                 )
 
         # Add title if provided
-        if plot_title:
-            fig.suptitle(plot_title, fontsize=14, y=1.08 if show_legend else 1.02)
+        if global_title:
+            fig.suptitle(global_title, fontsize=14, y=1.10 if global_show_legend else 0.98)
 
         st.pyplot(fig)
 
@@ -419,63 +441,15 @@ with tabs[0]:
 with tabs[1]:
     st.header("Finding 2: SAM vs Base Comparison")
 
-    # Toggle between GD and SGD results
-    experiment_choice_f2 = st.radio(
-        "Select Experiment Type",
-        ["GD (Gradient Descent)", "SGD (Stochastic Gradient Descent)"],
-        horizontal=True,
-        key="f2_experiment_choice"
-    )
+    # Local controls specific to Finding 2
+    metric_select = st.selectbox("Metric", [m for m in all_metrics_global], index=all_metrics_global.index("angle") if "angle" in all_metrics_global else 0, key="f2_metric")
 
-    # Set path based on selection
-    if "GD" in experiment_choice_f2 and "SGD" not in experiment_choice_f2:
-        finding2_path = Path("experiments/prayers/soudry_gd/2025-12-15_12-41-06/results.npz")
-        is_sgd_f2 = False
-    else:
-        finding2_path = Path("experiments/prayers/soudry_sgd/2025-12-15_13-04-25/results.npz")
-        is_sgd_f2 = True
-
-    if not finding2_path.exists():
-        st.error(f"Finding 2 data not found: {finding2_path}")
-        st.stop()
-
-    # Load the results
-    try:
-        reader_f2 = load_data(str(finding2_path))
-    except Exception as e:
-        st.error(f"Error loading Finding 2 data: {e}")
-        st.stop()
-
-    # Set x-axis label based on experiment type
-    x_label_f2 = "Epoch" if is_sgd_f2 else "Iteration"
-
-    # Set optimizer names
-    base_opt_name_f2 = "SGD" if is_sgd_f2 else "GD"
-    sam_opt_name_f2 = "SAM_SGD" if is_sgd_f2 else "SAM_GD"
-
-    # Get data from Finding 2 reader
-    all_optimizers_f2 = reader_f2.optimizers
-    all_metrics_f2 = reader_f2.metrics
-    all_params_f2 = reader_f2.hyperparams
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        base_opts = [o for o in all_optimizers_f2 if "SAM" not in o]
-        base_opt_select = st.selectbox("Base Optimizer", base_opts, index=base_opts.index("GD") if "GD" in base_opts else 0, key="f2_base")
-    with col2:
-        sam_opts = [o for o in all_optimizers_f2 if "SAM" in o]
-        sam_opt_select = st.selectbox("SAM Variant", sam_opts, index=sam_opts.index("SAM") if "SAM" in sam_opts else 0, key="f2_sam")
-    with col3:
-        metric_select = st.selectbox("Metric", [m for m in all_metrics_f2], index=all_metrics_f2.index("angle") if "angle" in all_metrics_f2 else 0)
-
-    show_legend_f2 = st.checkbox("Show Legend", value=True, key="f2_legend")
-
-    # Extract LRs and rhos from Finding 2 data
-    selected_opts_f2 = [base_opt_select, sam_opt_select]
+    # Extract LRs and rhos from global data
+    selected_opts_f2 = [global_base_opt, global_sam_opt]
     all_lrs_f2 = set()
     all_rhos_f2 = set()
     for opt in selected_opts_f2:
-        for p in all_params_f2.get(opt, []):
+        for p in all_params_global.get(opt, []):
             if 'lr' in p: all_lrs_f2.add(p['lr'])
             if 'rho' in p: all_rhos_f2.add(p['rho'])
 
@@ -535,41 +509,44 @@ with tabs[1]:
     strategy2.configure_axis(ax2, base_label=metric_select)
 
     # Set axis labels
-    ax2.set_xlabel(x_label_f2, fontsize=11)
-    ax2.set_ylabel("Angle Difference (radians)", fontsize=11)
+    ax2.set_xlabel(global_x_label, fontsize=14)
+    ax2.set_ylabel("Angle Difference (radians)", fontsize=14)
+
+    # Set tick label font sizes
+    ax2.tick_params(axis='both', which='major', labelsize=14)
 
     # Plot Base
-    for params in all_params_f2.get(base_opt_select, []):
+    for params in all_params_global.get(global_base_opt, []):
         lr = params.get('lr')
-        for seed in reader_f2.seeds:
+        for seed in reader_global.seeds:
             try:
-                y = reader_f2.get_data(base_opt_select, params, seed, metric_select)
-                x = reader_f2.get_data(base_opt_select, params, seed, 'steps')
+                y = reader_global.get_data(global_base_opt, params, seed, metric_select)
+                x = reader_global.get_data(global_base_opt, params, seed, 'steps')
                 c = compute_rho_vibrancy_color_f2(lr, 0.0, sorted_lrs_f2, sorted_rhos_f2)
-                ax2.plot(x, y, color=c, linestyle='--', alpha=0.6, linewidth=1.5, label="_nolegend_")
+                ax2.plot(x, y, color=c, linestyle='--', alpha=0.8, linewidth=1.5, marker='x', markersize=8, markevery=20, label="_nolegend_")
                 break
             except: pass
 
     # Plot SAM
-    for params in all_params_f2.get(sam_opt_select, []):
+    for params in all_params_global.get(global_sam_opt, []):
         lr = params.get('lr')
         rho = params.get('rho', 0.0)
-        for seed in reader_f2.seeds:
+        for seed in reader_global.seeds:
             try:
-                y = reader_f2.get_data(sam_opt_select, params, seed, metric_select)
-                x = reader_f2.get_data(sam_opt_select, params, seed, 'steps')
+                y = reader_global.get_data(global_sam_opt, params, seed, metric_select)
+                x = reader_global.get_data(global_sam_opt, params, seed, 'steps')
                 c = compute_rho_vibrancy_color_f2(lr, rho, sorted_lrs_f2, sorted_rhos_f2)
                 ax2.plot(x, y, color=c, linestyle='-', alpha=0.9, linewidth=2.0, label="_nolegend_")
                 break
             except: pass
 
-    if show_legend_f2:
+    if global_show_legend:
         # Create legend similar to Finding 1
         legend_elements = []
 
         # Split style indicators
-        legend_elements.append(Line2D([0], [0], color="black", linestyle="-", linewidth=2, label=f"{sam_opt_name_f2} (Solid)"))
-        legend_elements.append(Line2D([0], [0], color="black", linestyle="--", linewidth=2, alpha=0.5, label=f"{base_opt_name_f2} (Dashed)"))
+        legend_elements.append(Line2D([0], [0], color="black", linestyle="-", linewidth=2, label="SAM (solid)"))
+        legend_elements.append(Line2D([0], [0], color="black", linestyle="--", linewidth=2, alpha=0.5, label="Base (dashed)"))
         legend_elements.append(Patch(facecolor="none", edgecolor="none", label="   "))
 
         # Learning Rate (Hue)
@@ -584,7 +561,7 @@ with tabs[1]:
         # Rho (Vibrancy)
         if sorted_rhos_f2 and len(sorted_rhos_f2) > 1:
             legend_elements.append(Patch(facecolor="none", edgecolor="none", label=""))
-            rho_label = f"rho (Vibrancy, {sam_opt_name_f2} only):"
+            rho_label = f"rho (Vibrancy, {global_sam_opt_name} only):"
             legend_elements.append(Patch(facecolor="none", edgecolor="none", label=rho_label))
             sample_lr = sorted_lrs_f2[0] if sorted_lrs_f2 else 0.01
             for rho in sorted_rhos_f2:
@@ -604,9 +581,13 @@ with tabs[1]:
                 edgecolor='lightgray'
             )
 
+    # Add title if provided
+    if global_title:
+        fig2.suptitle(global_title, fontsize=14, y=1.10 if global_show_legend else 0.98)
+
     st.pyplot(fig2)
-    
-    fn2 = f"{base_opt_select}_vs_{sam_opt_select}.pdf"
+
+    fn2 = f"{global_base_opt}_vs_{global_sam_opt}.pdf"
     img2 = io.BytesIO()
     fig2.savefig(img2, format='pdf', bbox_inches='tight')
     st.download_button("Download Plot PDF", data=img2, file_name=fn2, mime="application/pdf")
