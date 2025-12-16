@@ -10,6 +10,7 @@ This shows how to:
 """
 
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from read_results import ResultsReader
 
@@ -113,6 +114,42 @@ def example_iterate_all_runs():
         print()
 
 
+def example_dataframe_usage():
+    """Demonstrate pandas DataFrame functionality."""
+    reader = ResultsReader('experiments/prayers/soudry_gd/2025-12-15_12-41-06/results.npz')
+
+    # Example 1: Get DataFrame for one optimizer (GD)
+    print("GD optimizer - all metrics (first 10 rows):")
+    df_gd = reader.to_dataframe_by_optimizer('GD')
+    print(df_gd.head(10))
+    print(f"\nShape: {df_gd.shape}")
+    print()
+
+    # Example 2: Get DataFrame for one optimizer and one metric
+    print("\nGD optimizer - training loss only (first 10 rows):")
+    df_gd_loss = reader.to_dataframe_by_optimizer('GD', metric='loss_train')
+    print(df_gd_loss.head(10))
+    print(f"\nShape: {df_gd_loss.shape}")
+    print()
+
+    # Example 3: Use pandas operations
+    print("\nBasic statistics for GD training loss:")
+    print(df_gd_loss.describe())
+    print()
+
+    # Example 4: Compare different optimizers
+    print("\nComparing different optimizers on training loss:")
+    for optimizer in ['GD', 'SAM', 'LossNGD']:
+        try:
+            df_opt = reader.to_dataframe_by_optimizer(optimizer, metric='loss_train')
+            if not df_opt.empty:
+                final_loss = df_opt.iloc[-1].mean()
+                print(f"  {optimizer}: mean final loss = {final_loss:.6e}")
+        except:
+            print(f"  {optimizer}: no data")
+    print()
+
+
 if __name__ == '__main__':
     print("Example 1: Basic Usage")
     print("="*80)
@@ -129,3 +166,7 @@ if __name__ == '__main__':
     print("\nExample 4: Plot Learning Curves")
     print("="*80)
     example_plot_learning_curves()
+
+    print("\nExample 5: DataFrame Usage")
+    print("="*80)
+    example_dataframe_usage()

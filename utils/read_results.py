@@ -14,6 +14,7 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import numpy as np
+import pandas as pd
 
 
 class ResultsReader:
@@ -188,6 +189,75 @@ class ResultsReader:
 
         return results
 
+    def to_dataframe(self, keys: Optional[List[str]] = None) -> pd.DataFrame:
+        """
+        Convert results to a pandas DataFrame.
+
+        Args:
+            keys: Optional list of keys to include. If None, includes all keys.
+
+        Returns:
+            DataFrame with index as step number and columns as data keys.
+            Arrays of different lengths are padded with NaN.
+        """
+        if keys is None:
+            keys = self.keys
+
+        if not keys:
+            return pd.DataFrame()
+
+        # Find the maximum length across all arrays
+        max_length = max(len(self.data[key]) for key in keys)
+
+        # Create a dictionary to store the data
+        data_dict = {}
+        for key in keys:
+            array = self.data[key]
+            # Pad with NaN if necessary
+            if len(array) < max_length:
+                padded = np.full(max_length, np.nan)
+                padded[:len(array)] = array
+                data_dict[key] = padded
+            else:
+                data_dict[key] = array
+
+        return pd.DataFrame(data_dict)
+
+    def to_dataframe_by_optimizer(self, optimizer: str, metric: Optional[str] = None) -> pd.DataFrame:
+        """
+        Convert results for a specific optimizer to a pandas DataFrame.
+
+        Args:
+            optimizer: Optimizer name (e.g., 'GD', 'SAM', 'LossNGD')
+            metric: Optional metric name to filter by (e.g., 'loss_train')
+
+        Returns:
+            DataFrame with columns for each param/seed combination for the optimizer.
+        """
+        # Filter keys that start with the optimizer name
+        optimizer_keys = [k for k in self.keys if k.startswith(f'{optimizer}(')]
+
+        # Further filter by metric if specified
+        if metric:
+            optimizer_keys = [k for k in optimizer_keys if k.endswith(f'_{metric}')]
+
+        return self.to_dataframe(keys=optimizer_keys)
+
+    def to_dataframe_by_metric(self, metric: str) -> pd.DataFrame:
+        """
+        Convert results for a specific metric to a pandas DataFrame.
+
+        Args:
+            metric: Metric name (e.g., 'loss_train', 'error_test')
+
+        Returns:
+            DataFrame with index as step number and columns for each
+            optimizer/params/seed combination for the specified metric.
+        """
+        # Filter keys that match the metric
+        metric_keys = [k for k in self.keys if k.endswith(f'_{metric}')]
+        return self.to_dataframe(keys=metric_keys)
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -218,6 +288,17 @@ def main():
         action='store_true',
         help='Show final values for specified optimizer and metric'
     )
+    parser.add_argument(
+        '--dataframe',
+        action='store_true',
+        help='Convert to pandas DataFrame and display (filters by optimizer, defaults to GD)'
+    )
+    parser.add_argument(
+        '--head',
+        type=int,
+        default=10,
+        help='Number of rows to display when using --dataframe (default: 10)'
+    )
 
     args = parser.parse_args()
 
@@ -225,7 +306,7 @@ def main():
     reader = ResultsReader(args.filepath)
 
     # Print summary by default
-    if not any([args.list_keys, args.final_values]):
+    if not any([args.list_keys, args.final_values, args.dataframe]):
         print(reader.summary())
 
     # List keys
@@ -253,6 +334,33 @@ def main():
         for (params, seed), value in sorted(final_vals.items()):
             param_str = ', '.join([f'{k}={v}' for k, v in params])
             print(f"  {param_str}, seed={seed}: {value:.6e}")
+
+    # Display DataFrame
+    if args.dataframe:
+        # Default to 'GD' optimizer if not specified
+        optimizer = args.optimizer if args.optimizer else 'GD'
+
+        # Get DataFrame for the specified optimizer
+        df = reader.to_dataframe_by_optimizer(optimizer, metric=args.metric)
+
+        if df.empty:
+            print(f"\nNo data found for optimizer '{optimizer}'")
+            if args.metric:
+                print(f"with metric '{args.metric}'")
+        else:
+            # Print info
+            if args.metric:
+                print(f"\nDataFrame for optimizer '{optimizer}', metric '{args.metric}':")
+            else:
+                print(f"\nDataFrame for optimizer '{optimizer}' (all metrics):")
+
+            print(f"Shape: {df.shape} rows × {df.shape[1]} columns\n")
+
+            # Display the dataframe
+            pd.set_option('display.max_columns', None)
+            pd.set_option('display.width', None)
+            pd.set_option('display.max_rows', args.head)
+            print(df.head(args.head))
 
 
 if __name__ == '__main__':
