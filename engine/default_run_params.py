@@ -106,7 +106,7 @@ def default_metrics(w_star, loss_fn, **kwargs):
                 Metric.UpdateNorm: compute_update_norm,  # Function not used, optimizer provides update_norm
                 Metric.GradLossRatio: loss_fn,  # Function not used, computed from grad_norm/loss - DISABLED
             },
-            w_star=w_star,
+            w_star=w_star, # the computed maximum margin solution from hard SVM
         )
 
     return metrics_factory

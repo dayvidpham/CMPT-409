@@ -42,6 +42,50 @@ python utils/check_imports.py
 - 0: All tests passed
 - 1: One or more tests failed
 
+### `read_results.py`
+Utility script to read and analyze results.npz files from experiments.
+
+```bash
+# Show summary of results file
+python utils/read_results.py experiments/prayers/soudry_gd/2025-12-15_12-41-06/results.npz
+
+# List all keys matching a filter
+python utils/read_results.py path/to/results.npz --list-keys --metric loss_train
+
+# Get final values for specific optimizer and metric
+python utils/read_results.py path/to/results.npz --final-values --optimizer GD --metric error_test
+```
+
+**What it does:**
+- Loads and parses .npz experiment results files
+- Provides summary of optimizers, hyperparameters, seeds, and metrics
+- Allows filtering and extracting specific data arrays
+- Can be used as a command-line tool or imported as a Python module
+
+**Programmatic usage:**
+```python
+from utils.read_results import ResultsReader
+
+# Load results
+reader = ResultsReader('path/to/results.npz')
+
+# Get specific data
+loss = reader.get_data(
+    optimizer='GD',
+    params={'lr': 0.1},
+    seed=0,
+    metric='loss_train'
+)
+
+# Get final values across all runs
+final_errors = reader.get_final_values('GD', 'error_test')
+
+# Iterate over all runs for an optimizer
+all_runs = reader.get_all_runs('SAM', 'loss_train')
+```
+
+See `example_read_results.py` for more usage examples.
+
 ### `strategy_scratchpad.py`
 Interactive scratchpad for experimenting with custom plotting strategies.
 
