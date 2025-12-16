@@ -194,8 +194,103 @@ global_sam_opt_name = "SAM_SGD" if is_sgd_global else "SAM_GD"
 
 # Get data from global reader
 all_optimizers_global = reader_global.optimizers
-all_metrics_global = reader_global.metrics
+all_metrics_global = list(reader_global.metrics)
 all_params_global = reader_global.hyperparams
+
+# ==============================================================================
+# COMPUTE RATIO METRICS
+# ==============================================================================
+# Compute LossNGD / VecNGD ratio for angle metric
+ratio_data_global = {}
+
+def compute_ratio_metric(reader, opt1, opt2, metric, params, seed):
+    """Compute ratio of opt1/opt2 for a given metric, params, and seed."""
+    try:
+        data1 = reader.get_data(opt1, params, seed, metric)
+        data2 = reader.get_data(opt2, params, seed, metric)
+
+        # Ensure both arrays have the same length
+        min_len = min(len(data1), len(data2))
+        data1 = data1[:min_len]
+        data2 = data2[:min_len]
+
+        # Compute ratio (avoid division by zero)
+        ratio = np.divide(data1, data2, where=data2!=0, out=np.full_like(data1, np.nan))
+        return ratio
+    except KeyError:
+        return None
+
+# Compute ratios for LossNGD / VecNGD
+if 'LossNGD' in all_optimizers_global and 'VecNGD' in all_optimizers_global and 'angle' in all_metrics_global:
+    for params in all_params_global.get('LossNGD', []):
+        # Check if VecNGD has the same params
+        if params in all_params_global.get('VecNGD', []):
+            for seed in reader_global.seeds:
+                ratio = compute_ratio_metric(reader_global, 'LossNGD', 'VecNGD', 'angle', params, seed)
+                if ratio is not None:
+                    # Store with a key similar to the original data format
+                    param_str = ','.join([f'{k}={v}' for k, v in sorted(params.items())])
+                    key = f'LossNGD/VecNGD({param_str})_seed{seed}_angle'
+                    ratio_data_global[key] = ratio
+
+                    # Also store the steps data (use from LossNGD)
+                    try:
+                        steps = reader_global.get_data('LossNGD', params, seed, 'steps')
+                        steps_key = f'LossNGD/VecNGD({param_str})_seed{seed}_steps'
+                        ratio_data_global[steps_key] = steps[:len(ratio)]
+                    except:
+                        pass
+
+# Add ratio metric to available metrics if we computed any ratios
+if ratio_data_global:
+    ratio_metric_name = "LossNGD/VecNGD_angle"
+    if ratio_metric_name not in all_metrics_global:
+        all_metrics_global.append(ratio_metric_name)
+
+# Helper function to get data for both regular and ratio metrics
+def get_metric_data_global(optimizer, params, seed, metric, current_metric_name=None):
+    """
+    Get metric data for either regular metrics or computed ratio metrics.
+
+    For ratio metrics like "LossNGD/VecNGD_angle", retrieves from ratio_data_global.
+    For regular metrics, uses reader_global.get_data().
+
+    Args:
+        optimizer: Optimizer name (ignored for ratio metrics)
+        params: Hyperparameter dict
+        seed: Random seed
+        metric: Metric name (e.g., "angle", "steps", or "LossNGD/VecNGD_angle")
+        current_metric_name: The primary metric being plotted (used to determine if steps should come from ratio data)
+    """
+    # Check if we're requesting steps for a ratio metric plot
+    if metric == 'steps' and current_metric_name and "/" in current_metric_name:
+        # Get steps from ratio data
+        base_metric = current_metric_name.split("_")[-1]
+        ratio_opts = current_metric_name.split("_")[0]
+        param_str = ','.join([f'{k}={v}' for k, v in sorted(params.items())])
+        steps_key = f'{ratio_opts}({param_str})_seed{seed}_steps'
+
+        if steps_key in ratio_data_global:
+            return ratio_data_global[steps_key]
+        # Fall back to regular steps if not found
+        return reader_global.get_data(optimizer, params, seed, metric)
+
+    if "/" in metric:
+        # This is a ratio metric
+        base_metric = metric.split("_")[-1]  # e.g., "angle" from "LossNGD/VecNGD_angle"
+        ratio_opts = metric.split("_")[0]  # e.g., "LossNGD/VecNGD"
+
+        # Construct the key to lookup in ratio_data_global
+        param_str = ','.join([f'{k}={v}' for k, v in sorted(params.items())])
+        key = f'{ratio_opts}({param_str})_seed{seed}_{base_metric}'
+
+        if key in ratio_data_global:
+            return ratio_data_global[key]
+        else:
+            raise KeyError(f"Ratio metric not found: {key}")
+    else:
+        # Regular metric
+        return reader_global.get_data(optimizer, params, seed, metric)
 
 # Global optimizer selectors
 col3, col4 = st.columns(2)
@@ -337,8 +432,8 @@ with tabs[0]:
         steps = None
         for seed in reader_global.seeds:
             try:
-                data = reader_global.get_data(global_base_opt, params, seed, plot_metric)
-                steps_data = reader_global.get_data(global_base_opt, params, seed, 'steps')
+                data = get_metric_data_global(global_base_opt, params, seed, plot_metric)
+                steps_data = get_metric_data_global(global_base_opt, params, seed, 'steps', current_metric_name=plot_metric)
                 run_data.append(data)
                 steps = steps_data
             except KeyError: pass
@@ -365,8 +460,8 @@ with tabs[0]:
         steps = None
         for seed in reader_global.seeds:
             try:
-                data = reader_global.get_data(global_sam_opt, params, seed, plot_metric)
-                steps_data = reader_global.get_data(global_sam_opt, params, seed, 'steps')
+                data = get_metric_data_global(global_sam_opt, params, seed, plot_metric)
+                steps_data = get_metric_data_global(global_sam_opt, params, seed, 'steps', current_metric_name=plot_metric)
                 run_data.append(data)
                 steps = steps_data
             except KeyError: pass
@@ -544,8 +639,8 @@ with tabs[1]:
             continue
         for seed in reader_global.seeds:
             try:
-                y = reader_global.get_data(global_base_opt, params, seed, metric_select)
-                x = reader_global.get_data(global_base_opt, params, seed, 'steps')
+                y = get_metric_data_global(global_base_opt, params, seed, metric_select)
+                x = get_metric_data_global(global_base_opt, params, seed, 'steps', current_metric_name=metric_select)
                 c = compute_rho_vibrancy_color_f2(lr, 0.0, sorted_lrs_f2_all, sorted_rhos_f2_all)
                 ax2.plot(x, y, color=c, linestyle='--', alpha=0.8, linewidth=1.5, marker='x', markersize=8, markevery=20, label="_nolegend_")
                 break
@@ -560,8 +655,8 @@ with tabs[1]:
             continue
         for seed in reader_global.seeds:
             try:
-                y = reader_global.get_data(global_sam_opt, params, seed, metric_select)
-                x = reader_global.get_data(global_sam_opt, params, seed, 'steps')
+                y = get_metric_data_global(global_sam_opt, params, seed, metric_select)
+                x = get_metric_data_global(global_sam_opt, params, seed, 'steps', current_metric_name=metric_select)
                 c = compute_rho_vibrancy_color_f2(lr, rho, sorted_lrs_f2_all, sorted_rhos_f2_all)
                 ax2.plot(x, y, color=c, linestyle='-', alpha=0.9, linewidth=2.0, label="_nolegend_")
                 break
@@ -624,65 +719,195 @@ with tabs[1]:
 # ==============================================================================
 with tabs[2]:
     st.header("Finding 3: Hyperparameter Grid")
-    
-    grid_metric = st.selectbox("Grid Metric", all_metrics, index=all_metrics.index("angle") if "angle" in all_metrics else 0, key="t3_metric")
-    grid_lrs = st.multiselect("Grid Learning Rates", sorted_lrs, default=sorted_lrs[:4] if len(sorted_lrs) > 4 else sorted_lrs)
-    grid_rhos = st.multiselect("Grid Rhos", sorted_rhos, default=[r for r in sorted_rhos if r > 0])
-    
-    if grid_lrs and grid_rhos:
-        nrows, ncols = len(grid_rhos), len(grid_lrs)
-        fig3, axes3 = plt.subplots(nrows, ncols, figsize=(3.5*ncols, 3*nrows), sharex=True, sharey=True, constrained_layout=True)
-        
-        if nrows == 1 and ncols == 1: axes3 = np.array([[axes3]])
-        elif nrows == 1: axes3 = axes3[np.newaxis, :]
-        elif ncols == 1: axes3 = axes3[:, np.newaxis]
-        
-        color_strat = ColorManagerFactory.create_paired_optimizer_manager(selected_opts, grid_rhos)
 
-        for i, rho in enumerate(grid_rhos):
-            for j, lr in enumerate(grid_lrs):
-                ax = axes3[i, j]
-                ax.set_xscale('log')
-                ax.set_yscale('log')
-                ax.grid(True, which='both', alpha=0.2)
-                
-                # Base Optimizers
-                for opt in [o for o in selected_opts if "SAM" not in o]:
-                    params = next((p for p in all_params.get(opt, []) if p['lr'] == lr), None)
-                    if params:
-                        try:
-                            y = reader.get_data(opt, params, 0, grid_metric)
-                            x = reader.get_data(opt, params, 0, 'steps')
-                            c = color_strat.color_config(opt, rho=0)
-                            ax.plot(x, y, color=c, alpha=0.5, linestyle='--', linewidth=1.5)
-                        except: pass
+    # Load Finding 3 specific data
+    f3_data_path = Path("experiments/prayers/twolayer_gd/2025-12-15_13-55-47/results.npz")
 
-                # SAM Optimizers
-                for opt in [o for o in selected_opts if "SAM" in o]:
-                    params = next((p for p in all_params.get(opt, []) if p['lr'] == lr and p.get('rho') == rho), None)
-                    if params:
-                        try:
-                            y = reader.get_data(opt, params, 0, grid_metric)
-                            x = reader.get_data(opt, params, 0, 'steps')
-                            c = color_strat.color_config(opt, rho=rho)
-                            ax.plot(x, y, color=c, alpha=0.9, linestyle='-', linewidth=2.0)
-                        except: pass
-                
-                if i == 0: ax.set_title(f"LR = {lr}", fontsize=10)
-                if j == 0: ax.set_ylabel(f"Rho = {rho}\n{grid_metric}", fontsize=9)
-        
-        # Grid Legend
-        legend_elements = []
-        for opt in selected_opts:
-            c = color_strat.color_config(opt, rho=0.1)
-            style = '-' if "SAM" in opt else '--'
-            legend_elements.append(Line2D([0], [0], color=c, lw=2, linestyle=style, label=opt))
-        fig3.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, 1.05), ncol=len(selected_opts))
+    if not f3_data_path.exists():
+        st.error(f"Data not found: {f3_data_path}")
+    else:
+        # Load the data
+        try:
+            reader_f3 = load_data(str(f3_data_path))
+        except Exception as e:
+            st.error(f"Error loading data: {e}")
+            reader_f3 = None
 
-        st.pyplot(fig3)
-        img3 = io.BytesIO()
-        fig3.savefig(img3, format='pdf', bbox_inches='tight')
-        st.download_button("Download Grid PDF", data=img3, file_name="hyperparam_grid.pdf", mime="application/pdf")
+        if reader_f3:
+            # Get data from Finding 3 reader
+            all_optimizers_f3 = reader_f3.optimizers
+            all_metrics_f3 = reader_f3.metrics
+            all_params_f3 = reader_f3.hyperparams
+
+            # Filter to only LossNGD and SAM_LossNGD
+            selected_optimizers_f3 = ['LossNGD', 'SAM_LossNGD']
+            # Only keep optimizers that exist in the data
+            selected_optimizers_f3 = [opt for opt in selected_optimizers_f3 if opt in all_optimizers_f3]
+
+            # Local controls specific to Finding 3
+            grid_metric = st.selectbox("Grid Metric", all_metrics_f3, index=all_metrics_f3.index("angle") if "angle" in all_metrics_f3 else 0, key="t3_metric")
+
+            # Extract all available LRs and rhos from selected optimizers only
+            all_lrs_f3 = set()
+            all_rhos_f3 = set()
+            for opt in selected_optimizers_f3:
+                for p in all_params_f3.get(opt, []):
+                    if 'lr' in p: all_lrs_f3.add(p['lr'])
+                    if 'rho' in p: all_rhos_f3.add(p['rho'])
+
+            sorted_lrs_f3_all = sorted(list(all_lrs_f3))
+            sorted_rhos_f3_all = sorted(list(all_rhos_f3))
+
+            # Hyperparameter selection for grid
+            col_f3_1, col_f3_2 = st.columns(2)
+            with col_f3_1:
+                grid_lrs = st.multiselect(
+                    "Grid Learning Rates",
+                    sorted_lrs_f3_all,
+                    default=sorted_lrs_f3_all[:4] if len(sorted_lrs_f3_all) > 4 else sorted_lrs_f3_all,
+                    key="f3_lrs"
+                )
+            with col_f3_2:
+                # Only show rhos > 0 by default for grid
+                default_rhos = [r for r in sorted_rhos_f3_all if r > 0]
+                grid_rhos = st.multiselect(
+                    "Grid Rho Values",
+                    sorted_rhos_f3_all,
+                    default=default_rhos if default_rhos else sorted_rhos_f3_all,
+                    key="f3_rhos"
+                )
+
+            if grid_lrs and grid_rhos:
+                nrows, ncols = len(grid_rhos), len(grid_lrs)
+
+                # Optimize figure size for single subplot
+                if nrows == 1 and ncols == 1:
+                    figsize = (10, 7)
+                else:
+                    figsize = (3.5*ncols, 3*nrows)
+
+                fig3, axes3 = plt.subplots(nrows, ncols, figsize=figsize, sharex=True, sharey=True, constrained_layout=True)
+
+                if nrows == 1 and ncols == 1: axes3 = np.array([[axes3]])
+                elif nrows == 1: axes3 = axes3[np.newaxis, :]
+                elif ncols == 1: axes3 = axes3[:, np.newaxis]
+
+                # Use paired optimizer colors matching hyperparam_grid (only for selected optimizers)
+                optimizer_types = sorted(selected_optimizers_f3)
+                colors = ColorManagerFactory.create_paired_optimizer_manager(
+                    optimizer_types, grid_rhos
+                )
+
+                # Pre-compute matching configs for each (lr, rho) pair
+                configs_by_lr_rho = {}
+                base_optimizers_by_lr = {}
+
+                # Build config lookup tables (only for selected optimizers)
+                for opt in selected_optimizers_f3:
+                    for params in all_params_f3.get(opt, []):
+                        lr = params.get('lr')
+                        rho = params.get('rho', None)
+
+                        # Store configs with explicit rho values
+                        if rho is not None and rho > 0:
+                            key = (lr, rho)
+                            if key not in configs_by_lr_rho:
+                                configs_by_lr_rho[key] = []
+                            configs_by_lr_rho[key].append((opt, params))
+
+                        # Store base optimizers (rho=0 or no rho) separately
+                        if rho is None or rho == 0:
+                            if opt == "LossNGD":  # Only LossNGD is the base optimizer
+                                if lr not in base_optimizers_by_lr:
+                                    base_optimizers_by_lr[lr] = []
+                                base_optimizers_by_lr[lr].append((opt, params))
+
+                for i, rho in enumerate(grid_rhos):
+                    for j, lr in enumerate(grid_lrs):
+                        ax = axes3[i, j]
+                        ax.set_xscale('log')
+                        ax.set_yscale('log')
+                        ax.grid(True, which='both', alpha=0.2)
+
+                        # Set tick label font sizes
+                        ax.tick_params(axis='both', which='major', labelsize=12)
+
+                        # Get matching configs for this (lr, rho) cell
+                        matching_configs = configs_by_lr_rho.get((lr, rho), [])
+                        # Include base optimizers in EVERY row (as reference)
+                        matching_configs = list(matching_configs) + base_optimizers_by_lr.get(lr, [])
+
+                        if not matching_configs:
+                            ax.text(0.5, 0.5, "No data", ha="center", va="center",
+                                   transform=ax.transAxes, color="gray")
+                            ax.set_xticks([])
+                            ax.set_yticks([])
+                            continue
+
+                        # Plot each optimizer
+                        for opt, params in matching_configs:
+                            # Get color for this optimizer
+                            color = colors.color_config(opt, rho=None)
+                            base_rgb = color[:3]
+
+                            # Determine if this is a base optimizer (LossNGD) or SAM variant (SAM_LossNGD)
+                            is_base = (opt == "LossNGD")
+
+                            for seed in reader_f3.seeds:
+                                try:
+                                    y = reader_f3.get_data(opt, params, seed, grid_metric)
+                                    x = reader_f3.get_data(opt, params, seed, 'steps')
+
+                                    if is_base:
+                                        # Base optimizer: dashed with markers
+                                        ax.plot(x, y, color=base_rgb, alpha=0.8, linestyle='--',
+                                               linewidth=1.5, marker='x', markersize=8, markevery=20)
+                                    else:
+                                        # SAM optimizer: solid
+                                        ax.plot(x, y, color=base_rgb, alpha=0.9, linestyle='-', linewidth=2.0)
+                                    break
+                                except: pass
+
+                        if i == 0: ax.set_title(f"lr={lr}", fontsize=12)
+                        if j == 0: ax.set_ylabel(f"rho={rho}\n{grid_metric}", fontsize=11)
+                        if i == nrows - 1: ax.set_xlabel("Steps", fontsize=11)
+
+                # Enable y-tick labels on all subplots
+                for row in axes3:
+                    for ax in row:
+                        ax.tick_params(axis="y", which="both", labelleft=True)
+                        ax.tick_params(labelsize=10)
+
+                # Create legend matching hyperparam_grid style
+                if global_show_legend:
+                    legend_elements = []
+
+                    # Get optimizer colors
+                    opt_colors = colors.legend_colors()
+
+                    # Add optimizer type legend entries
+                    for opt_name in sorted(optimizer_types):
+                        legend_elements.append(
+                            Line2D([0], [0], color=opt_colors[opt_name][:3], lw=3, label=f"  {opt_name}")
+                        )
+
+                    fig3.legend(
+                        handles=legend_elements,
+                        loc='upper center',
+                        bbox_to_anchor=(0.5, 1.02),
+                        ncol=min(len(legend_elements), 6),
+                        frameon=True,
+                        fontsize=11
+                    )
+
+                # Add title if provided
+                if global_title:
+                    fig3.suptitle(global_title, fontsize=14, y=1.05 if global_show_legend else 0.98)
+
+                st.pyplot(fig3)
+                img3 = io.BytesIO()
+                fig3.savefig(img3, format='pdf', bbox_inches='tight')
+                st.download_button("Download Grid PDF", data=img3, file_name="hyperparam_grid.pdf", mime="application/pdf")
 
 # ==============================================================================
 # TAB 4: Stability Analysis
